@@ -963,8 +963,10 @@ defmodule DanteJournal.View do
   def handle_info({:recorder, {:error, message}}, state),
     do: {:noreply, %{state | recording: nil, notice: message}}
 
-  def handle_info({:recorder, {:hotkey, {:listening, key}}}, state),
-    do: {:noreply, %{state | hotkey_status: :listening, hotkey: key}}
+  def handle_info({:recorder, {:hotkey, {:listening, key}}}, state) do
+    notice = if state.hotkey_status == :denied, do: nil, else: state.notice
+    {:noreply, %{state | hotkey_status: :listening, hotkey: key, notice: notice}}
+  end
 
   def handle_info({:recorder, {:hotkey, {:learned, key}}}, state),
     do: {:noreply, State.learned_hotkey(state, key)}

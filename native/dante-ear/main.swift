@@ -243,6 +243,9 @@ final class HotkeyMonitor {
     private var down = false
     private var learning = false
     private var learnSawKey = false
+    private var askedForAccess = false
+    private var reportedDenied = false
+    private var pending: Int64 = 0
 
     private var keyCode: Int64 { hotkey & 0xFF }
     private var modifiers: Int64 { hotkey >> 8 }
@@ -273,6 +276,7 @@ final class HotkeyMonitor {
     }
 
     func stop() {
+        pending = 0
         if let runLoop { CFRunLoopStop(runLoop) }
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         tap = nil
@@ -295,13 +299,27 @@ final class HotkeyMonitor {
         learning = wasLearning
         guard value > 0 || learning else { return }
         if !CGPreflightListenEventAccess() {
-            // Asks once; macOS shows the Input Monitoring prompt for the responsible app.
-            _ = CGRequestListenEventAccess()
+            // Asks once; macOS shows the Input Monitoring prompt for the responsible
+            // app. The grant arrives later, so keep checking and start when it does.
+            if !askedForAccess {
+                askedForAccess = true
+                _ = CGRequestListenEventAccess()
+            }
             if !CGPreflightListenEventAccess() {
-                emit(["event": "hotkey", "status": "denied"])
+                if !reportedDenied {
+                    reportedDenied = true
+                    emit(["event": "hotkey", "status": "denied"])
+                }
+                pending = value
+                DispatchQueue.global().asyncAfter(deadline: .now() + 3) { [weak self] in
+                    guard let self, self.pending == value, self.tap == nil else { return }
+                    self.start(hotkey: value, forLearning: forLearning)
+                }
                 return
             }
         }
+        pending = 0
+        reportedDenied = false
         hotkey = value
         let thread = Thread { [weak self] in
             guard let self else { return }

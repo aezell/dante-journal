@@ -343,6 +343,10 @@ defmodule DanteJournal.ViewTest do
     assert %{hotkey_status: :denied, notice: "Hold-to-talk needs Input Monitoring" <> _} =
              assigns(runtime)
 
+    # Once the grant arrives the helper starts listening and the notice clears.
+    send_view(runtime, {:recorder, {:hotkey, {:listening, 61}}})
+    assert %{hotkey_status: :listening, notice: nil} = assigns(runtime)
+
     click(runtime, "hotkey:-1")
     assert_receive {:"$gen_cast", {:set_hotkey, nil}}
     assert %{hotkey: -1, hotkey_status: :off} = assigns(runtime)
