@@ -5,7 +5,8 @@
 // in:  {"cmd":"start","clip":"/path/to/clip.wav"}   begin a dictation
 //      {"cmd":"stop"}                               end it
 //      {"cmd":"file","path":"/path/to/audio"}       transcribe a file
-//      {"cmd":"hotkey","key":61}                    watch a key system-wide (0 = stop watching)
+//      {"cmd":"hotkey","key":61}                    watch a key system-wide (0 = stop watching);
+//                                                   key = keycode | modifiers << 8 (⌘1 ⌥2 ⌃4 ⇧8 fn16)
 //      {"cmd":"learn"}                              report the next key pressed, for choosing one
 //      {"cmd":"quit"}
 // out: {"event":"ready","locale":"en_US"}
@@ -223,17 +224,25 @@ struct EarError: Error, CustomStringConvertible {
 
 // MARK: - Hold-to-talk hotkey
 
-/// Watches one key system-wide with a listen-only CGEventTap on its own run
-/// loop, so holding it works while the journal is in the background. Needs
-/// Input Monitoring permission; the first call asks for it.
+/// Watches one key or chord system-wide with a listen-only CGEventTap on its
+/// own run loop, so holding it works while the journal is in the background.
+/// Needs Input Monitoring permission; the first call asks for it.
+///
+/// A hotkey is `keycode | modifiers << 8`. With no modifiers the key may be a
+/// modifier itself (right ⌥, fn…), tracked through flagsChanged; otherwise it
+/// is an ordinary key that must be pressed with exactly those modifiers.
 final class HotkeyMonitor {
     static let shared = HotkeyMonitor()
     private var thread: Thread?
     private var runLoop: CFRunLoop?
     private var tap: CFMachPort?
-    private(set) var keyCode: Int64 = 0
+    private(set) var hotkey: Int64 = 0
     private var down = false
     private var learning = false
+    private var learnSawKey = false
+
+    private var keyCode: Int64 { hotkey & 0xFF }
+    private var modifiers: Int64 { hotkey >> 8 }
 
     // Modifier keys arrive as flagsChanged; everything else as keyDown/keyUp.
     private static let modifierMasks: [Int64: CGEventFlags] = [
@@ -244,27 +253,44 @@ final class HotkeyMonitor {
         63: .maskSecondaryFn,
     ]
 
+    // Modifier bits in a hotkey's high byte, in the order the app names them.
+    private static let modifierBits: [(Int64, CGEventFlags)] = [
+        (1, .maskCommand), (2, .maskAlternate), (4, .maskControl), (8, .maskShift), (16, .maskSecondaryFn),
+    ]
+
+    private static func bits(of flags: CGEventFlags) -> Int64 {
+        modifierBits.reduce(0) { acc, pair in flags.contains(pair.1) ? acc | pair.0 : acc }
+    }
+
+    // The chord's modifiers must be held, and no others among ⌘⌥⌃⇧.
+    private func modifiersMatch(_ flags: CGEventFlags) -> Bool {
+        let held = HotkeyMonitor.bits(of: flags)
+        let required = modifiers
+        return (held & 15) == (required & 15) && (required & 16 == 0 || held & 16 != 0)
+    }
+
     func stop() {
         if let runLoop { CFRunLoopStop(runLoop) }
         if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
         tap = nil
         runLoop = nil
         thread = nil
-        keyCode = 0
+        hotkey = 0
         down = false
     }
 
-    /// Reports the next key pressed, then goes back to watching the current key.
+    /// Reports the next key or chord pressed, then goes back to watching the current one.
     func learn() {
         learning = true
-        if tap == nil { start(keyCode: 0, forLearning: true) }
+        learnSawKey = false
+        if tap == nil { start(hotkey: 0, forLearning: true) }
     }
 
-    func start(keyCode code: Int64, forLearning: Bool = false) {
+    func start(hotkey value: Int64, forLearning: Bool = false) {
         let wasLearning = learning || forLearning
         stop()
         learning = wasLearning
-        guard code > 0 || learning else { return }
+        guard value > 0 || learning else { return }
         if !CGPreflightListenEventAccess() {
             // Asks once; macOS shows the Input Monitoring prompt for the responsible app.
             _ = CGRequestListenEventAccess()
@@ -273,7 +299,7 @@ final class HotkeyMonitor {
                 return
             }
         }
-        keyCode = code
+        hotkey = value
         let thread = Thread { [weak self] in
             guard let self else { return }
             let mask: CGEventMask =
@@ -296,7 +322,7 @@ final class HotkeyMonitor {
             let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
             CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
             CGEvent.tapEnable(tap: tap, enable: true)
-            if code > 0 { emit(["event": "hotkey", "status": "listening", "key": code]) }
+            if value > 0 { emit(["event": "hotkey", "status": "listening", "key": value]) }
             CFRunLoopRun()
         }
         thread.name = "dante-ear.hotkey"
@@ -311,36 +337,60 @@ final class HotkeyMonitor {
         }
         let code = event.getIntegerValueField(.keyboardEventKeycode)
         if learning {
-            // Any key press, including a modifier going down, picks that key.
-            let picked: Bool
-            switch type {
-            case .keyDown: picked = event.getIntegerValueField(.keyboardEventAutorepeat) == 0
-            case .flagsChanged: picked = HotkeyMonitor.modifierMasks[code].map { event.flags.contains($0) } ?? false
-            default: picked = false
-            }
-            if picked {
-                learning = false
-                emit(["event": "hotkey", "learned": code])
-            }
+            learnStep(type: type, code: code, flags: event.flags, isRepeat: event.getIntegerValueField(.keyboardEventAutorepeat) != 0)
             return
         }
-        guard code == keyCode else { return }
         let pressed: Bool
-        switch type {
-        case .flagsChanged:
-            guard let mask = HotkeyMonitor.modifierMasks[code] else { return }
+        if modifiers == 0, let mask = HotkeyMonitor.modifierMasks[keyCode] {
+            // A modifier on its own.
+            guard type == .flagsChanged, code == keyCode else { return }
             pressed = event.flags.contains(mask)
-        case .keyDown:
-            if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return }
-            pressed = true
-        case .keyUp:
-            pressed = false
-        default:
-            return
+        } else {
+            switch type {
+            case .keyDown:
+                guard code == keyCode, !down else { return }
+                if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return }
+                guard modifiersMatch(event.flags) else { return }
+                pressed = true
+            case .keyUp:
+                guard code == keyCode, down else { return }
+                pressed = false
+            case .flagsChanged:
+                // Letting go of a modifier ends the chord too.
+                guard down, !modifiersMatch(event.flags) else { return }
+                pressed = false
+            default:
+                return
+            }
         }
         guard pressed != down else { return }
         down = pressed
         emit(["event": "hotkey", "state": pressed ? "down" : "up"])
+    }
+
+    // Learning: an ordinary key pressed with whatever modifiers are held is the
+    // chord; a modifier pressed and released on its own is a single-key choice.
+    private func learnStep(type: CGEventType, code: Int64, flags: CGEventFlags, isRepeat: Bool) {
+        switch type {
+        case .keyDown:
+            guard !isRepeat else { return }
+            learnSawKey = true
+            finishLearning(code | (HotkeyMonitor.bits(of: flags) << 8))
+        case .flagsChanged:
+            guard let mask = HotkeyMonitor.modifierMasks[code] else { return }
+            if flags.contains(mask) {
+                learnSawKey = false
+            } else if !learnSawKey {
+                finishLearning(code)
+            }
+        default:
+            return
+        }
+    }
+
+    private func finishLearning(_ value: Int64) {
+        learning = false
+        emit(["event": "hotkey", "learned": value])
     }
 }
 
@@ -381,7 +431,7 @@ for try await line in FileHandle.standardInput.bytes.lines {
             try await ear.transcribe(path: path)
         case "hotkey":
             let key = (command["key"] as? NSNumber)?.int64Value ?? 0
-            HotkeyMonitor.shared.start(keyCode: key)
+            HotkeyMonitor.shared.start(hotkey: key)
         case "learn":
             HotkeyMonitor.shared.learn()
         case "quit":

@@ -1,5 +1,10 @@
 defmodule DanteJournal.Keys do
-  @moduledoc "Names for macOS virtual key codes, for showing which key is hold-to-talk."
+  @moduledoc """
+  Hold-to-talk keys. A hotkey is one integer, `keycode ||| modifiers <<< 8`,
+  so it travels unchanged through preferences, the palette and the helper's
+  protocol. Modifier bits: ⌘ 1, ⌥ 2, ⌃ 4, ⇧ 8, fn 16. `-1` means off.
+  """
+  import Bitwise
 
   @names %{
     0 => "A",
@@ -115,16 +120,39 @@ defmodule DanteJournal.Keys do
   }
 
   @modifiers [54, 55, 56, 58, 59, 60, 61, 62, 63]
+  @bits [{1, "⌘"}, {2, "⌥"}, {4, "⌃"}, {8, "⇧"}, {16, "fn"}]
 
   @doc "`-1` means hold-to-talk is off; 0 is the A key."
   def off, do: -1
 
+  def encode(code, modifiers) when code in 0..255 and modifiers in 0..31,
+    do: code ||| modifiers <<< 8
+
+  def decode(key) when is_integer(key) and key >= 0, do: {key &&& 0xFF, key >>> 8}
+
   def name(-1), do: "off"
-  def name(code) when is_integer(code), do: Map.get(@names, code, "key #{code}")
 
-  @doc "Modifier and function keys don't type anything into the app in front, so they make the best hold-to-talk keys."
-  def quiet?(code) when code in @modifiers, do: true
-  def quiet?(code), do: Map.get(@names, code, "") =~ ~r/^F\d+$/
+  def name(key) when is_integer(key) do
+    {code, modifiers} = decode(key)
+    prefix = for {bit, glyph} <- @bits, (modifiers &&& bit) != 0, into: "", do: glyph
+    prefix <> Map.get(@names, code, "key #{code}")
+  end
 
-  def valid?(code), do: is_integer(code) and code in -1..255
+  @doc """
+  Whether the hotkey leaves the app in front alone: a modifier on its own, a
+  function key, or a chord with ⌘ or ⌃ never types text. (A chord may still
+  be a shortcut in that app.)
+  """
+  def quiet?(key) when is_integer(key) and key >= 0 do
+    {code, modifiers} = decode(key)
+    code in @modifiers or Map.get(@names, code, "") =~ ~r/^F\d+$/ or (modifiers &&& 5) != 0
+  end
+
+  def quiet?(_), do: true
+
+  def valid?(key) when is_integer(key) do
+    key == -1 or (key >= 0 and (key &&& 0xFF) in 0..255 and (key >>> 8) in 0..31)
+  end
+
+  def valid?(_), do: false
 end

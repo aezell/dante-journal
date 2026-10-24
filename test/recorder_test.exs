@@ -68,7 +68,7 @@ defmodule DanteJournal.RecorderTest do
     refute_receive {:recorder, {:hotkey, _}}, 100
 
     Recorder.learn_hotkey(recorder)
-    assert_receive {:recorder, {:hotkey, {:learned, 105}}}, 1_000
+    assert_receive {:recorder, {:hotkey, {:learned, 286}}}, 1_000
   end
 
   test "a missing helper is reported, not crashed on" do

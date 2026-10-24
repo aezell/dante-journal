@@ -275,8 +275,9 @@ against Petrocchi, compares the page's Italian to ours as a drift check,
 and writes `~/Library/Application Support/Dante Journal/texts/mandelbaum.json`;
 the reader prefers it and ⌘K switches translations. `dante-ear` gained a
 listen-only `CGEventTap` on its own run loop for one key (right ⌥ by
-default; any key via ⌘K → "Set the hold-to-talk key…", which puts the tap
-in a learn mode that reports the next key pressed; or off): press starts,
+default; any key or chord such as ⌘] via ⌘K → "Set the hold-to-talk key…",
+which puts the tap in a learn mode that reports the next key pressed with
+the modifiers held, encoded as `keycode ||| modifiers <<< 8`; or off): press starts,
 held release stops, a quick tap toggles; it needs Input Monitoring, which the helper
 requests and the app explains when denied. `mix dante.app` builds a
 release into `Dante Journal.app` with the helper, the precompiled GPUI

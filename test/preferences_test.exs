@@ -34,7 +34,7 @@ defmodule DanteJournal.PreferencesTest do
     assert Preferences.restore([theme: :dark], path)[:theme] == :dark
     assert Preferences.restore([], path)[:italian] == true
 
-    File.write!(path, ~s({"theme":"neon","italian":"yes","notes_scope":"all","hotkey":700}))
+    File.write!(path, ~s({"theme":"neon","italian":"yes","notes_scope":"all","hotkey":-5}))
     assert Preferences.load(path) == [notes_scope: :all]
   end
 end

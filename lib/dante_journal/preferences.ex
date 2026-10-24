@@ -8,8 +8,8 @@ defmodule DanteJournal.Preferences do
     english: [:mandelbaum, :longfellow],
     notes_scope: [:canto, :cantica, :all],
     notes_group: [:canto, :type, :day],
-    # Any macOS virtual key code; -1 is off.
-    hotkey: Enum.to_list(-1..255)
+    # Checked by DanteJournal.Keys.valid?/1 instead of a list.
+    hotkey: :key
   }
 
   def path,
@@ -53,10 +53,12 @@ defmodule DanteJournal.Preferences do
     end
   end
 
+  defp decode(:hotkey, value), do: if(DanteJournal.Keys.valid?(value), do: value)
+
   defp decode(key, value) when is_binary(value),
     do: Enum.find(@allowed[key], &(Atom.to_string(&1) == value))
 
-  defp decode(key, value) when is_boolean(value) or is_integer(value),
+  defp decode(key, value) when is_boolean(value),
     do: if(value in @allowed[key], do: value)
 
   defp decode(_key, _value), do: nil
