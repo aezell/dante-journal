@@ -795,6 +795,8 @@ defmodule DanteJournal.View do
   def handle_event("hotkey:" <> key, _event, state),
     do: {:noreply, State.set_hotkey(state, String.to_integer(key))}
 
+  def handle_event("hotkey-learn", _event, state), do: {:noreply, State.learn_hotkey(state)}
+
   def handle_event("english:" <> english, _event, state),
     do: {:noreply, State.set_english(state, String.to_existing_atom(english))}
 
@@ -870,6 +872,9 @@ defmodule DanteJournal.View do
 
   def handle_info({:recorder, {:hotkey, {:listening, key}}}, state),
     do: {:noreply, %{state | hotkey_status: :listening, hotkey: key}}
+
+  def handle_info({:recorder, {:hotkey, {:learned, key}}}, state),
+    do: {:noreply, State.learned_hotkey(state, key)}
 
   def handle_info({:recorder, {:hotkey, :denied}}, state) do
     {:noreply,

@@ -8,7 +8,7 @@ defmodule DanteJournal.Recorder do
 
       :ready | {:unavailable, reason} | :started | {:partial, text} | {:tick, ms}
       | {:stopped, %{text: text, clip: path, ms: ms}} | {:transcript, %{text: text, path: path}}
-      | {:hotkey, :down | :up | {:listening, key} | :denied} | {:error, message}
+      | {:hotkey, :down | :up | {:listening, key} | {:learned, key} | :denied} | {:error, message}
   """
   use GenServer
   require Logger
@@ -34,6 +34,8 @@ defmodule DanteJournal.Recorder do
   def status(server), do: GenServer.call(server, :status)
   @doc "Watches a key system-wide for hold-to-talk; `nil` stops watching."
   def set_hotkey(server, key), do: GenServer.cast(server, {:set_hotkey, key})
+  @doc "Asks the helper to report the next key pressed, as `{:hotkey, {:learned, key}}`."
+  def learn_hotkey(server), do: GenServer.cast(server, :learn_hotkey)
 
   # -- Server ------------------------------------------------------------------
 
@@ -88,6 +90,14 @@ defmodule DanteJournal.Recorder do
 
   def handle_cast({:transcribe_file, _path}, state) do
     notify(state, {:error, reason_for(state.phase)})
+    {:noreply, state}
+  end
+
+  def handle_cast(:learn_hotkey, state) do
+    if state.phase in [:starting, :restarting, :unavailable],
+      do: notify(state, {:error, reason_for(state.phase)}),
+      else: command(state, %{cmd: "learn"})
+
     {:noreply, state}
   end
 
@@ -165,6 +175,7 @@ defmodule DanteJournal.Recorder do
       %{"state" => "up"} -> notify(state, {:hotkey, :up})
       %{"status" => "listening", "key" => key} -> notify(state, {:hotkey, {:listening, key}})
       %{"status" => "denied"} -> notify(state, {:hotkey, :denied})
+      %{"learned" => key} when is_integer(key) -> notify(state, {:hotkey, {:learned, key}})
       _ -> :ok
     end
 

@@ -1,6 +1,6 @@
 defmodule DanteJournal.State do
   @moduledoc "The workspace state map and its pure transitions."
-  alias DanteJournal.{Anchor, Classifier, Form, Notes, Preferences, Tercet, Text}
+  alias DanteJournal.{Anchor, Classifier, Form, Keys, Notes, Preferences, Tercet, Text}
 
   @scopes [:canto, :cantica, :all]
   @groups [:canto, :type, :day]
@@ -24,6 +24,7 @@ defmodule DanteJournal.State do
       hotkey: Keyword.get(opts, :hotkey, 61),
       hotkey_status: :off,
       hotkey_down_at: nil,
+      hotkey_learning: false,
       # nil, or the dictation in progress.
       recording: nil,
       # nil, or the note form in the card.
@@ -94,19 +95,48 @@ defmodule DanteJournal.State do
       else: state
   end
 
-  def set_hotkey(state, key) when key in [0, 61, 54, 62, 63] do
-    if state.recorder,
-      do: DanteJournal.Recorder.set_hotkey(state.recorder, if(key == 0, do: nil, else: key))
+  def set_hotkey(state, key) do
+    if Keys.valid?(key) do
+      if state.recorder,
+        do:
+          DanteJournal.Recorder.set_hotkey(
+            state.recorder,
+            if(key == Keys.off(), do: nil, else: key)
+          )
 
-    %{state | hotkey: key, hotkey_status: if(key == 0, do: :off, else: state.hotkey_status)}
-    |> remember()
+      %{
+        state
+        | hotkey: key,
+          hotkey_learning: false,
+          hotkey_status: if(key == Keys.off(), do: :off, else: state.hotkey_status)
+      }
+      |> remember()
+    else
+      state
+    end
   end
 
-  def hotkey_name(61), do: "right ⌥"
-  def hotkey_name(54), do: "right ⌘"
-  def hotkey_name(62), do: "right ⌃"
-  def hotkey_name(63), do: "fn"
-  def hotkey_name(_), do: "off"
+  @doc "Asks the helper for the next key pressed; `learned_hotkey/2` finishes the job."
+  def learn_hotkey(%{recorder: nil} = state), do: %{state | notice: "Transcription isn't ready."}
+
+  def learn_hotkey(state) do
+    DanteJournal.Recorder.learn_hotkey(state.recorder)
+    %{state | hotkey_learning: true, notice: "Press the key you want to hold to talk…"}
+  end
+
+  def learned_hotkey(state, key) do
+    state = set_hotkey(state, key)
+
+    notice =
+      if Keys.quiet?(key),
+        do: "Hold-to-talk key: #{Keys.name(key)}.",
+        else:
+          "Hold-to-talk key: #{Keys.name(key)}. It still types into whatever app is in front, so a modifier or function key is quieter."
+
+    %{state | notice: notice}
+  end
+
+  def hotkey_name(key), do: Keys.name(key)
 
   defp remember(state) do
     Preferences.remember(state.preferences_path, state)
@@ -385,11 +415,10 @@ defmodule DanteJournal.State do
     {"export:md", "Export shown notes as Markdown", ""},
     {"export:txt", "Export shown notes as text", ""},
     {"toggle-theme", "Toggle dark and light", "⌘⇧L"},
+    {"hotkey-learn", "Set the hold-to-talk key… (press any key)", ""},
     {"hotkey:61", "Hold-to-talk key: right Option", ""},
-    {"hotkey:54", "Hold-to-talk key: right Command", ""},
-    {"hotkey:62", "Hold-to-talk key: right Control", ""},
     {"hotkey:63", "Hold-to-talk key: fn", ""},
-    {"hotkey:0", "Hold-to-talk: off", ""}
+    {"hotkey:-1", "Hold-to-talk: off", ""}
   ]
 
   @doc "Palette choices for the query: a place in the poem first, then commands."

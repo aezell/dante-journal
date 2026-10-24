@@ -8,8 +8,8 @@ defmodule DanteJournal.Preferences do
     english: [:mandelbaum, :longfellow],
     notes_scope: [:canto, :cantica, :all],
     notes_group: [:canto, :type, :day],
-    # Key codes the helper can watch: right ⌥, right ⌘, right ⌃, fn; 0 is off.
-    hotkey: [0, 61, 54, 62, 63]
+    # Any macOS virtual key code; -1 is off.
+    hotkey: Enum.to_list(-1..255)
   }
 
   def path,

@@ -277,9 +277,23 @@ defmodule DanteJournal.ViewTest do
     assert %{hotkey_status: :denied, notice: "Hold-to-talk needs Input Monitoring" <> _} =
              assigns(runtime)
 
-    click(runtime, "hotkey:0")
+    click(runtime, "hotkey:-1")
     assert_receive {:"$gen_cast", {:set_hotkey, nil}}
-    assert %{hotkey: 0, hotkey_status: :off} = assigns(runtime)
+    assert %{hotkey: -1, hotkey_status: :off} = assigns(runtime)
+
+    click(runtime, "hotkey-learn")
+    assert_receive {:"$gen_cast", :learn_hotkey}
+    assert %{hotkey_learning: true, notice: "Press the key" <> _} = assigns(runtime)
+    send_view(runtime, {:recorder, {:hotkey, {:learned, 105}}})
+    assert_receive {:"$gen_cast", {:set_hotkey, 105}}
+
+    assert %{hotkey: 105, hotkey_learning: false, notice: "Hold-to-talk key: F13."} =
+             assigns(runtime)
+
+    send_view(runtime, {:recorder, {:hotkey, {:listening, 105}}})
+    assert payload(runtime) =~ "hold F13 to talk"
+    send_view(runtime, {:recorder, {:hotkey, {:learned, 0}}})
+    assert %{notice: "Hold-to-talk key: A." <> _} = assigns(runtime)
   end
 
   test "theme tokens are resolved before the tree reaches a display" do

@@ -30,6 +30,7 @@ while IFS= read -r line; do
       echo '{"event":"hotkey","state":"down"}'
       echo '{"event":"hotkey","state":"up"}'
       ;;
+    *'"learn"'*) echo '{"event":"hotkey","learned":105}' ;;
     *'"quit"'*) exit 0 ;;
     *'"crash"'*) exit 7 ;;
   esac

@@ -27,6 +27,8 @@ the OpenSSL library Erlang's crypto needs, signed ad hoc. Its minimum macOS
 is whatever the bundled Erlang was built for (27.0 with the asdf build here). On first launch
 macOS asks for the microphone; hold-to-talk also needs Input Monitoring
 (System Settings → Privacy & Security → Input Monitoring), then a relaunch.
+Any key can be the hold-to-talk key; modifier and function keys are best,
+since an ordinary key still types into whatever app is in front.
 Opened from Finder the app logs to `~/Library/Logs/Dante Journal/`. The icon
 is drawn by `macos/make_icon.sh`.
 
@@ -50,7 +52,7 @@ offers "Read the Longfellow translation" to switch.
 | Shortcut | Action |
 | --- | --- |
 | ⌘⇧D | Start a dictation; press again to stop (it also stops after a pause) |
-| hold right ⌥ | Hold-to-talk from any app: press to start, release to stop; a quick tap toggles instead. Change or turn off the key from ⌘K |
+| hold a key | Hold-to-talk from any app: press to start, release to stop; a quick tap toggles instead. Right Option by default; pick any key with ⌘K → "Set the hold-to-talk key…" and press it, or turn it off |
 | ⌘N | Type a note, anchored to the selected tercet or the open canto |
 | ⌘S | Save the note in the card |
 | ⌘K | Go to a canto ("inf 5", "purg 9.70") or run a command |
