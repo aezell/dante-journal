@@ -115,6 +115,16 @@ defmodule DanteJournal.ViewTest do
     assert GPUI.Tree.find!(tree, id: "marker-" <> note.id)
     assert GPUI.Tree.find!(tree, id: "note-" <> note.id)
     assert GPUI.Tree.find!(tree, id: "play-" <> note.id)
+    click(runtime, "play:" <> note.id)
+    assert_receive {:"$gen_cast", {:play, _, path}}
+    assert String.ends_with?(path, "audio/" <> note.id <> ".wav")
+    send_view(runtime, {:player, {:playing, note.id}})
+    assert %{playing: id} = assigns(runtime)
+    assert id == note.id
+    click(runtime, "stop-clip")
+    assert_receive {:"$gen_cast", :stop_playback}
+    send_view(runtime, {:player, :stopped})
+    assert %{playing: nil} = assigns(runtime)
 
     click(runtime, "note-delete:" <> note.id)
     assert assigns(runtime).pending_delete == note.id

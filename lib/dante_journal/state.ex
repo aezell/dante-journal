@@ -23,7 +23,6 @@ defmodule DanteJournal.State do
       # Servers; nil when running without them (some tests).
       notes: Keyword.get(opts, :notes),
       recorder: Keyword.get(opts, :recorder),
-      player: Keyword.get(opts, :player),
       recorder_status: :starting,
       # Key code watched for hold-to-talk (0 = off) and what the helper says about it.
       hotkey: Keyword.get(opts, :hotkey, 61),

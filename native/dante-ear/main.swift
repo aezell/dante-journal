@@ -8,6 +8,8 @@
 //      {"cmd":"hotkey","key":61}                    watch a key system-wide (0 = stop watching);
 //                                                   key = keycode | modifiers << 8 (⌘1 ⌥2 ⌃4 ⇧8 fn16)
 //      {"cmd":"learn"}                              report the next key pressed, for choosing one
+//      {"cmd":"play","path":"/path/clip.wav"}       play a clip (output only, no permission needed)
+//      {"cmd":"stopplay"}
 //      {"cmd":"quit"}
 // out: {"event":"ready","locale":"en_US"}
 //      {"event":"started"}
@@ -17,6 +19,7 @@
 //      {"event":"hotkey","status":"listening","key":61} | {"event":"hotkey","status":"denied"}
 //      {"event":"hotkey","state":"down"} | {"event":"hotkey","state":"up"}
 //      {"event":"hotkey","learned":105}
+//      {"event":"play","state":"started"|"finished"|"failed","path":"..."}
 //      {"event":"error","message":"..."}
 //      {"event":"log","message":"..."}
 
@@ -394,6 +397,52 @@ final class HotkeyMonitor {
     }
 }
 
+// MARK: - Clip playback
+
+/// Plays one clip at a time with AVAudioPlayer. Output needs no permission,
+/// unlike `afplay`, whose AudioToolbox setup can raise the microphone prompt
+/// for the app that spawned it.
+final class ClipPlayer: NSObject, AVAudioPlayerDelegate {
+    static let shared = ClipPlayer()
+    private var player: AVAudioPlayer?
+    private var path = ""
+
+    func play(path: String) {
+        stop()
+        do {
+            let player = try AVAudioPlayer(contentsOf: URL(fileURLWithPath: path))
+            player.delegate = self
+            self.player = player
+            self.path = path
+            if player.play() {
+                emit(["event": "play", "state": "started", "path": path])
+            } else {
+                emit(["event": "play", "state": "failed", "path": path, "message": "could not start playback"])
+                self.player = nil
+            }
+        } catch {
+            emit(["event": "play", "state": "failed", "path": path, "message": "\(error.localizedDescription)"])
+        }
+    }
+
+    func stop() {
+        guard let player else { return }
+        player.stop()
+        self.player = nil
+        emit(["event": "play", "state": "finished", "path": path])
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        self.player = nil
+        emit(["event": "play", "state": "finished", "path": path])
+    }
+
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        self.player = nil
+        emit(["event": "play", "state": "failed", "path": path, "message": error?.localizedDescription ?? "decode error"])
+    }
+}
+
 // MARK: - Command loop
 
 guard #available(macOS 26.0, *) else {
@@ -434,7 +483,13 @@ for try await line in FileHandle.standardInput.bytes.lines {
             HotkeyMonitor.shared.start(hotkey: key)
         case "learn":
             HotkeyMonitor.shared.learn()
+        case "play":
+            guard let path = command["path"] as? String else { throw EarError("play needs a path") }
+            ClipPlayer.shared.play(path: path)
+        case "stopplay":
+            ClipPlayer.shared.stop()
         case "quit":
+            ClipPlayer.shared.stop()
             HotkeyMonitor.shared.stop()
             if await ear.running { try? await ear.stop() }
             exit(0)

@@ -19,8 +19,7 @@ defmodule DanteJournal do
     state = %{
       DanteJournal.State.initial(opts)
       | notes: DanteJournal.Notes,
-        recorder: DanteJournal.Recorder,
-        player: DanteJournal.Player
+        recorder: DanteJournal.Recorder
     }
 
     children = [
@@ -33,8 +32,7 @@ defmodule DanteJournal do
        name: DanteJournal.Recorder,
        sink: {:runtime, DanteJournal.Runtime},
        hotkey: if(state.hotkey == DanteJournal.Keys.off(), do: nil, else: state.hotkey),
-       silence_ms: state.pause_ms},
-      {DanteJournal.Player, name: DanteJournal.Player, sink: {:runtime, DanteJournal.Runtime}}
+       silence_ms: state.pause_ms}
     ]
 
     with {:ok, supervisor} <- Supervisor.start_link(children, strategy: :rest_for_one) do

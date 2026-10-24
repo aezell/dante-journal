@@ -82,6 +82,21 @@ defmodule DanteJournal.RecorderTest do
     assert_receive {:recorder, {:stopped, _}}, 1_000
   end
 
+  test "clips play through the helper" do
+    recorder = start()
+    path = Path.join(System.tmp_dir!(), "dante-clip-#{System.unique_integer([:positive])}.wav")
+    File.write!(path, "RIFF")
+    on_exit(fn -> File.rm(path) end)
+
+    Recorder.play(recorder, "n1", path)
+    assert_receive {:player, {:playing, "n1"}}, 1_000
+    Recorder.stop_playback(recorder)
+    assert_receive {:player, :stopped}, 1_000
+
+    Recorder.play(recorder, "n2", "/nonexistent.wav")
+    assert_receive {:player, {:error, "No audio clip for this note."}}
+  end
+
   test "a missing helper is reported, not crashed on" do
     {:ok, recorder} =
       Recorder.start_link(binary: "/nonexistent/dante-ear", sink: {:pid, self()}, name: nil)

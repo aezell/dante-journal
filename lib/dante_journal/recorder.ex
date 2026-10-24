@@ -38,6 +38,9 @@ defmodule DanteJournal.Recorder do
   def learn_hotkey(server), do: GenServer.cast(server, :learn_hotkey)
   @doc "How long a pause ends a dictation, in ms; 0 never."
   def set_silence(server, ms), do: GenServer.cast(server, {:set_silence, ms})
+  @doc "Plays a clip through the helper; events arrive as `{:player, ...}`."
+  def play(server, id, path), do: GenServer.cast(server, {:play, id, path})
+  def stop_playback(server), do: GenServer.cast(server, :stop_playback)
 
   # -- Server ------------------------------------------------------------------
 
@@ -59,7 +62,8 @@ defmodule DanteJournal.Recorder do
       max_timer: nil,
       tick_timer: nil,
       buffer: "",
-      hotkey: Keyword.get(opts, :hotkey)
+      hotkey: Keyword.get(opts, :hotkey),
+      playing: nil
     }
 
     {:ok, open(state)}
@@ -93,6 +97,22 @@ defmodule DanteJournal.Recorder do
 
   def handle_cast({:transcribe_file, _path}, state) do
     notify(state, {:error, reason_for(state.phase)})
+    {:noreply, state}
+  end
+
+  def handle_cast({:play, id, path}, state) do
+    if (state.port && state.phase not in [:starting, :restarting, :unavailable]) and
+         File.exists?(path) do
+      command(state, %{cmd: "play", path: path})
+      {:noreply, %{state | playing: id}}
+    else
+      notify_player(state, {:error, "No audio clip for this note."})
+      {:noreply, state}
+    end
+  end
+
+  def handle_cast(:stop_playback, state) do
+    command(state, %{cmd: "stopplay"})
     {:noreply, state}
   end
 
@@ -181,6 +201,24 @@ defmodule DanteJournal.Recorder do
     notify(state, :ready)
     if state.hotkey, do: command(state, %{cmd: "hotkey", key: state.hotkey})
     %{state | phase: :idle}
+  end
+
+  defp handle_event(%{"event" => "play"} = event, state) do
+    case event do
+      %{"state" => "started"} ->
+        notify_player(state, {:playing, state.playing})
+
+      %{"state" => "finished"} ->
+        notify_player(state, :stopped)
+
+      %{"state" => "failed"} ->
+        notify_player(state, {:error, "Couldn't play the clip: #{event["message"]}"})
+
+      _ ->
+        :ok
+    end
+
+    if event["state"] in ["finished", "failed"], do: %{state | playing: nil}, else: state
   end
 
   defp handle_event(%{"event" => "hotkey"} = event, state) do
@@ -283,6 +321,11 @@ defmodule DanteJournal.Recorder do
     do: GPUI.Runtime.send_view(runtime, 1, {:recorder, event})
 
   defp notify(%{sink: {:pid, pid}}, event), do: send(pid, {:recorder, event})
+
+  defp notify_player(%{sink: {:runtime, runtime}}, event),
+    do: GPUI.Runtime.send_view(runtime, 1, {:player, event})
+
+  defp notify_player(%{sink: {:pid, pid}}, event), do: send(pid, {:player, event})
 
   defp reason_for(:unavailable), do: "The transcription helper isn't available."
   defp reason_for(:starting), do: "The transcription helper is still starting."

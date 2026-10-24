@@ -31,6 +31,8 @@ while IFS= read -r line; do
       echo '{"event":"hotkey","state":"up"}'
       ;;
     *'"learn"'*) echo '{"event":"hotkey","learned":286}' ;;
+    *'"play"'*) echo '{"event":"play","state":"started","path":"/tmp/x.wav"}' ;;
+    *'"stopplay"'*) echo '{"event":"play","state":"finished","path":"/tmp/x.wav"}' ;;
     *'"quit"'*) exit 0 ;;
     *'"crash"'*) exit 7 ;;
   esac

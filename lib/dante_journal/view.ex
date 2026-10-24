@@ -10,7 +10,6 @@ defmodule DanteJournal.View do
     Export,
     Form,
     Notes,
-    Player,
     Recorder,
     State,
     Tercet,
@@ -800,11 +799,12 @@ defmodule DanteJournal.View do
   def handle_event("note-delete-confirm:" <> id, _event, state),
     do: {:noreply, State.delete_note(state, id)}
 
-  def handle_event("play:" <> id, _event, %{player: player} = state) when not is_nil(player) do
+  def handle_event("play:" <> id, _event, %{recorder: recorder} = state)
+      when not is_nil(recorder) do
     case Enum.find(state.all_notes, &(&1.id == id)) do
       %Note{audio: audio} when is_binary(audio) ->
-        Player.play(
-          player,
+        Recorder.play(
+          recorder,
           id,
           Path.join(Path.dirname(Notes.clip_path(state.notes, id)) |> Path.dirname(), audio)
         )
@@ -818,10 +818,13 @@ defmodule DanteJournal.View do
 
   def handle_event("play:" <> _id, _event, state), do: {:noreply, state}
 
-  def handle_event("stop-clip", _event, %{player: player} = state) when not is_nil(player) do
-    Player.stop(player)
+  def handle_event("stop-clip", _event, %{recorder: recorder} = state)
+      when not is_nil(recorder) do
+    Recorder.stop_playback(recorder)
     {:noreply, state}
   end
+
+  def handle_event("stop-clip", _event, state), do: {:noreply, state}
 
   def handle_event("scope:" <> scope, _event, state),
     do: {:noreply, State.set_scope(state, String.to_existing_atom(scope))}
