@@ -132,7 +132,7 @@ defmodule DanteJournal.Anchor do
   # -- Grammar -----------------------------------------------------------------
 
   @cantica_words "inferno|inf\\.?|hell|purgatorio|purg\\.?|purgatory|paradiso|par\\.?|paradise|heaven"
-  @unit_words "stanza|stanzas|tercet|tercets|terzina|terzine|strophe"
+  @unit_words "stanza|stanzas|stanzer|tercet|tercets|tersit|tersits|tercit|terset|tursit|terza|terzina|terzine|strophe"
   @line_words "lines|line|verses|verse|ll\\.|l\\."
 
   defp anchor_regex do
