@@ -130,7 +130,7 @@ defmodule DanteJournal.View do
 
   defp record_button(%{recording: nil, recorder_status: :ready} = assigns) do
     ~GPUI"""
-    <UI.button id="record" label="● Record  ⌘⇧D" size="xs" variant="ghost" phx-click="toggle-recording" disabled={not is_nil(assigns.form)} />
+    <UI.button id="record" label={"● Record  " <> record_hint(assigns)} size="xs" variant="ghost" phx-click="toggle-recording" disabled={not is_nil(assigns.form)} />
     """
   end
 
@@ -140,11 +140,23 @@ defmodule DanteJournal.View do
     """
   end
 
-  defp record_button(_assigns) do
+  defp record_button(assigns) do
     ~GPUI"""
-    <UI.button id="record" label="■ Stop  ⌘⇧D" size="xs" variant="danger" phx-click="toggle-recording" />
+    <UI.button id="record" label={"■ Stop  " <> stop_hint(assigns)} size="xs" variant="danger" phx-click="toggle-recording" />
     """
   end
+
+  # The key that starts a dictation: the hold-to-talk key when one is
+  # listening, otherwise the window shortcut (which always works too).
+  defp record_hint(%{hotkey_status: :listening, hotkey: key}),
+    do: "hold " <> State.hotkey_name(key)
+
+  defp record_hint(_assigns), do: "⌘⇧D"
+
+  defp stop_hint(%{hotkey_status: :listening, hotkey: key}),
+    do: "release " <> State.hotkey_name(key)
+
+  defp stop_hint(_assigns), do: "⌘⇧D"
 
   defp reader(assigns) do
     tercets = Text.tercets(assigns.english, assigns.cantica, assigns.canto)
@@ -255,7 +267,7 @@ defmodule DanteJournal.View do
       <div class="flex flex-col flex-1 min-w-0 gap-1">
         <div class="flex flex-row items-center gap-2">
           <text class="text-[11px] font-semibold" style={[color: {:theme, :recording}]}>{if assigns.recording.phase == :arming, do: "Listening…", else: "Recording"}</text>
-          <text class="text-[11px]" style={[color: {:theme, :muted}]}>{clock(assigns.recording.ms)} · stops after a pause, or ⌘⇧D</text>
+          <text class="text-[11px]" style={[color: {:theme, :muted}]}>{clock(assigns.recording.ms)} · stops after a pause, {stop_hint(assigns)}, or ⌘⇧D</text>
         </div>
         <text class="text-[14px] leading-[20px]">{if assigns.recording.text == "", do: "Say where you are, then your note: “Canto 2, stanza 12, …”", else: assigns.recording.text}</text>
       </div>
@@ -448,7 +460,7 @@ defmodule DanteJournal.View do
   defp empty_notes(assigns) do
     ~GPUI"""
     <text class="text-[12px] leading-[18px] px-1 pt-2" style={[color: {:theme, :muted}]}>{cond do
-      assigns.all_notes == [] and assigns.recorder_status == :ready -> "No notes yet. Press ⌘⇧D and say where you are, then your note, or ⌘N to type one."
+      assigns.all_notes == [] and assigns.recorder_status == :ready -> "No notes yet. #{String.capitalize(record_hint(assigns))} and say where you are, then your note, or ⌘N to type one."
       assigns.all_notes == [] -> "No notes yet."
       true -> "Nothing matches here. Widen the scope or clear the filters."
     end}</text>
