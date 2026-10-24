@@ -838,7 +838,19 @@ defmodule DanteJournal.View do
 
   def handle_event("palette-key", _event, state), do: {:noreply, state}
 
-  def handle_event("palette-submit", _event, state) do
+  # Enter carries the input's current text; trust it over the last change
+  # event, which can lag or be missing, so the highlighted choice is the one
+  # the user is looking at and never the first of an unfiltered list.
+  def handle_event("palette-submit", event, state) do
+    state =
+      case event do
+        %{value: value} when is_binary(value) and value != state.palette_query ->
+          %{state | palette_query: value, palette_index: 0}
+
+        _ ->
+          state
+      end
+
     case Enum.at(State.choices(state), state.palette_index) do
       nil -> {:noreply, state}
       choice -> handle_event(choice.event, %{}, State.close_palette(state))

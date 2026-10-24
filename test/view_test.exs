@@ -233,7 +233,10 @@ defmodule DanteJournal.ViewTest do
   end
 
   test "the palette goes to a place or runs a command", %{notes: notes} do
-    runtime = start_runtime!(DanteJournal.Desktop, args: State.initial(notes: notes))
+    runtime =
+      start_runtime!(DanteJournal.Desktop, args: State.initial(notes: notes, recorder: self()))
+
+    send_view(runtime, {:recorder, :ready})
     command(runtime, "open-palette")
     assert %{palette: true} = assigns(runtime)
 
@@ -244,6 +247,12 @@ defmodule DanteJournal.ViewTest do
 
     submit(runtime, "palette-submit", "purg 9.70")
     assert %{palette: false, cantica: :purgatorio, canto: 9, tercet: 24} = assigns(runtime)
+
+    # Enter with text the change events never delivered still runs what is shown.
+    command(runtime, "open-palette")
+    submit(runtime, "palette-submit", "set the hold")
+    assert_receive {:"$gen_cast", :learn_hotkey}
+    assert %{palette: false, hotkey_learning: true, recording: nil} = assigns(runtime)
 
     command(runtime, "open-palette")
     change(runtime, "palette-query", "italian")
