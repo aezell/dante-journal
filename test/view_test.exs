@@ -296,6 +296,21 @@ defmodule DanteJournal.ViewTest do
     assert %{notice: "Hold-to-talk key: A." <> _} = assigns(runtime)
   end
 
+  test "⌘Q closes the window, stopping a dictation first", %{notes: notes} do
+    runtime =
+      start_runtime!(DanteJournal.Desktop, args: State.initial(notes: notes, recorder: self()))
+
+    send_view(runtime, {:recorder, :ready})
+    command(runtime, "toggle-recording")
+    assert_receive {:"$gen_cast", {:start_recording, _}}
+    send_view(runtime, {:recorder, :started})
+
+    assert [_window] = snapshot(runtime).windows
+    command(runtime, "quit")
+    assert_receive {:"$gen_cast", :stop_recording}
+    assert snapshot(runtime).windows == []
+  end
+
   test "theme tokens are resolved before the tree reaches a display" do
     tree = View.render(State.initial())
     refute inspect(tree, limit: :infinity) =~ ":theme"

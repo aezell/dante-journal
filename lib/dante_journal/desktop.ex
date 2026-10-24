@@ -14,6 +14,7 @@ defmodule DanteJournal.Desktop do
          size(1280, 800)
          min_size(960, 600)
          chrome(:content)
+         shortcut("quit", "primary-q")
          shortcut("toggle-recording", "primary-shift-d")
          shortcut("new-note", "primary-n")
          shortcut("form-save", "primary-s")

@@ -415,6 +415,7 @@ defmodule DanteJournal.State do
     {"export:md", "Export shown notes as Markdown", ""},
     {"export:txt", "Export shown notes as text", ""},
     {"toggle-theme", "Toggle dark and light", "⌘⇧L"},
+    {"quit", "Quit Dante Journal", "⌘Q"},
     {"hotkey-learn", "Set the hold-to-talk key… (press any key)", ""},
     {"hotkey:61", "Hold-to-talk key: right Option", ""},
     {"hotkey:63", "Hold-to-talk key: fn", ""},

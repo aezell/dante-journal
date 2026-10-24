@@ -637,6 +637,13 @@ defmodule DanteJournal.View do
     {:noreply, state}
   end
 
+  # ⌘Q, the palette, or the window's close button. A dictation in progress
+  # is stopped; notes are saved explicitly, so nothing else needs flushing.
+  def handle_event("quit", _event, state) do
+    if state.recording && state.recorder, do: Recorder.stop_recording(state.recorder)
+    {:close, state}
+  end
+
   # Dictation
 
   def handle_event("toggle-recording", _event, %{recording: nil} = state) do

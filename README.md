@@ -60,6 +60,7 @@ offers "Read the Longfellow translation" to switch.
 | ⌘I | Toggle the Italian (Petrocchi) column |
 | ⌘⇧N / ⌘⇧P | Next / previous canto |
 | ⌘⇧L | Toggle dark / light |
+| ⌘Q | Quit |
 
 Say where you are, then your note: "Canto 2, stanza 12, Dante sees the
 leopard…". The anchor is parsed from what you said; without one, the note
