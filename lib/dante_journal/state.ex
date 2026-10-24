@@ -22,6 +22,7 @@ defmodule DanteJournal.State do
       recorder_status: :starting,
       # Key code watched for hold-to-talk (0 = off) and what the helper says about it.
       hotkey: Keyword.get(opts, :hotkey, 61),
+      pause_ms: Keyword.get(opts, :pause_ms, 6_000),
       hotkey_status: :off,
       hotkey_down_at: nil,
       hotkey_learning: false,
@@ -137,6 +138,18 @@ defmodule DanteJournal.State do
   end
 
   def hotkey_name(key), do: Keys.name(key)
+
+  @pauses [3_000, 6_000, 10_000, 15_000, 0]
+
+  def set_pause(state, ms) when ms in @pauses do
+    if state.recorder, do: DanteJournal.Recorder.set_silence(state.recorder, ms)
+    %{state | pause_ms: ms, notice: "Dictation stops #{pause_label(ms)}."} |> remember()
+  end
+
+  def set_pause(state, _ms), do: state
+
+  def pause_label(0), do: "only when you stop it"
+  def pause_label(ms), do: "after a #{div(ms, 1000)} s pause"
 
   defp remember(state) do
     Preferences.remember(state.preferences_path, state)
@@ -419,7 +432,12 @@ defmodule DanteJournal.State do
     {"hotkey-learn", "Set the hold-to-talk key… (press a key or a chord like ⌘])", ""},
     {"hotkey:61", "Hold-to-talk key: right Option", ""},
     {"hotkey:63", "Hold-to-talk key: fn", ""},
-    {"hotkey:-1", "Hold-to-talk: off", ""}
+    {"hotkey:-1", "Hold-to-talk: off", ""},
+    {"pause:3000", "Stop dictation after a 3 s pause", ""},
+    {"pause:6000", "Stop dictation after a 6 s pause", ""},
+    {"pause:10000", "Stop dictation after a 10 s pause", ""},
+    {"pause:15000", "Stop dictation after a 15 s pause", ""},
+    {"pause:0", "Stop dictation only when I stop it", ""}
   ]
 
   @doc "Palette choices for the query: a place in the poem first, then commands."

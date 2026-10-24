@@ -30,7 +30,10 @@ defmodule DanteJournal do
        args: state,
        display_opts: [name: DanteJournal.Display, theme: state.theme]},
       {DanteJournal.Recorder,
-       name: DanteJournal.Recorder, sink: {:runtime, DanteJournal.Runtime}},
+       name: DanteJournal.Recorder,
+       sink: {:runtime, DanteJournal.Runtime},
+       hotkey: if(state.hotkey == DanteJournal.Keys.off(), do: nil, else: state.hotkey),
+       silence_ms: state.pause_ms},
       {DanteJournal.Player, name: DanteJournal.Player, sink: {:runtime, DanteJournal.Runtime}}
     ]
 

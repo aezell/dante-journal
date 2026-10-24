@@ -52,7 +52,7 @@ offers "Read the Longfellow translation" to switch.
 
 | Shortcut | Action |
 | --- | --- |
-| ⌘⇧D | Start a dictation; press again to stop (it also stops after a pause) |
+| ⌘⇧D | Start a dictation; press again to stop (it also stops after a 6 s pause; change or disable that from ⌘K) |
 | hold a key | Hold-to-talk from any app: press to start, release to stop; a quick tap toggles instead. Right Option by default; pick any key or chord (⌘], F13, right ⌃…) with ⌘K → "Set the hold-to-talk key…" and press it, or turn it off |
 | ⌘N | Type a note, anchored to the selected tercet or the open canto |
 | ⌘S | Save the note in the card |

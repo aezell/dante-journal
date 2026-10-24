@@ -36,6 +36,8 @@ defmodule DanteJournal.Recorder do
   def set_hotkey(server, key), do: GenServer.cast(server, {:set_hotkey, key})
   @doc "Asks the helper to report the next key pressed, as `{:hotkey, {:learned, key}}`."
   def learn_hotkey(server), do: GenServer.cast(server, :learn_hotkey)
+  @doc "How long a pause ends a dictation, in ms; 0 never."
+  def set_silence(server, ms), do: GenServer.cast(server, {:set_silence, ms})
 
   # -- Server ------------------------------------------------------------------
 
@@ -44,7 +46,8 @@ defmodule DanteJournal.Recorder do
     state = %{
       binary: Keyword.get(opts, :binary, default_binary()),
       sink: Keyword.fetch!(opts, :sink),
-      silence_ms: Keyword.get(opts, :silence_ms, 3_000),
+      # 0 disables the pause cutoff; the idle rule and max duration still apply.
+      silence_ms: Keyword.get(opts, :silence_ms, 6_000),
       max_ms: Keyword.get(opts, :max_ms, 180_000),
       # Give up when nothing at all has been heard for this long.
       idle_ms: Keyword.get(opts, :idle_ms, 15_000),
@@ -92,6 +95,9 @@ defmodule DanteJournal.Recorder do
     notify(state, {:error, reason_for(state.phase)})
     {:noreply, state}
   end
+
+  def handle_cast({:set_silence, ms}, state) when is_integer(ms) and ms >= 0,
+    do: {:noreply, %{state | silence_ms: ms}}
 
   def handle_cast(:learn_hotkey, state) do
     if state.phase in [:starting, :restarting, :unavailable],
@@ -141,11 +147,19 @@ defmodule DanteJournal.Recorder do
   def handle_info(:reopen, state), do: {:noreply, open(state)}
 
   def handle_info(:silence, %{phase: :recording} = state) do
-    if state.text == "" and elapsed(state) < state.idle_ms do
-      {:noreply, %{state | silence_timer: schedule(:silence, state.silence_ms)}}
-    else
-      command(state, %{cmd: "stop"})
-      {:noreply, %{cancel_timers(state) | phase: :stopping}}
+    heard = state.text != ""
+
+    cond do
+      heard and state.silence_ms > 0 ->
+        command(state, %{cmd: "stop"})
+        {:noreply, %{cancel_timers(state) | phase: :stopping}}
+
+      not heard and elapsed(state) >= state.idle_ms ->
+        command(state, %{cmd: "stop"})
+        {:noreply, %{cancel_timers(state) | phase: :stopping}}
+
+      true ->
+        {:noreply, %{state | silence_timer: schedule(:silence, silence_interval(state))}}
     end
   end
 
@@ -189,7 +203,7 @@ defmodule DanteJournal.Recorder do
       state
       | phase: :recording,
         started_at: System.monotonic_time(:millisecond),
-        silence_timer: schedule(:silence, state.silence_ms),
+        silence_timer: schedule(:silence, silence_interval(state)),
         max_timer: schedule(:max_duration, state.max_ms),
         tick_timer: schedule(:tick, 1_000)
     }
@@ -198,7 +212,7 @@ defmodule DanteJournal.Recorder do
   defp handle_event(%{"event" => "partial", "text" => text}, %{phase: :recording} = state) do
     notify(state, {:partial, text})
     state = cancel(state, :silence_timer)
-    %{state | text: text, silence_timer: schedule(:silence, state.silence_ms)}
+    %{state | text: text, silence_timer: schedule(:silence, silence_interval(state))}
   end
 
   defp handle_event(%{"event" => "partial", "text" => text}, state) do
@@ -277,6 +291,10 @@ defmodule DanteJournal.Recorder do
 
   defp elapsed(%{started_at: nil}), do: 0
   defp elapsed(%{started_at: at}), do: System.monotonic_time(:millisecond) - at
+
+  # With the pause cutoff off, keep polling for the idle rule.
+  defp silence_interval(%{silence_ms: 0}), do: 1_000
+  defp silence_interval(%{silence_ms: ms}), do: ms
 
   defp schedule(message, ms), do: Process.send_after(self(), message, ms)
 

@@ -267,7 +267,7 @@ defmodule DanteJournal.View do
       <div class="flex flex-col flex-1 min-w-0 gap-1">
         <div class="flex flex-row items-center gap-2">
           <text class="text-[11px] font-semibold" style={[color: {:theme, :recording}]}>{if assigns.recording.phase == :arming, do: "Listening…", else: "Recording"}</text>
-          <text class="text-[11px]" style={[color: {:theme, :muted}]}>{clock(assigns.recording.ms)} · stops after a pause, {stop_hint(assigns)}, or ⌘⇧D</text>
+          <text class="text-[11px]" style={[color: {:theme, :muted}]}>{clock(assigns.recording.ms)} · stops {State.pause_label(assigns.pause_ms)}, {stop_hint(assigns)}, or ⌘⇧D</text>
         </div>
         <text class="text-[14px] leading-[20px]">{if assigns.recording.text == "", do: "Say where you are, then your note: “Canto 2, stanza 12, …”", else: assigns.recording.text}</text>
       </div>
@@ -815,6 +815,9 @@ defmodule DanteJournal.View do
     do: {:noreply, State.set_hotkey(state, String.to_integer(key))}
 
   def handle_event("hotkey-learn", _event, state), do: {:noreply, State.learn_hotkey(state)}
+
+  def handle_event("pause:" <> ms, _event, state),
+    do: {:noreply, State.set_pause(state, String.to_integer(ms))}
 
   def handle_event("english:" <> english, _event, state),
     do: {:noreply, State.set_english(state, String.to_existing_atom(english))}

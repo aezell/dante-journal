@@ -71,6 +71,17 @@ defmodule DanteJournal.RecorderTest do
     assert_receive {:recorder, {:hotkey, {:learned, 286}}}, 1_000
   end
 
+  test "with the pause cutoff off, a dictation runs until stopped" do
+    recorder = start(silence_ms: 0)
+    Recorder.start_recording(recorder, "/tmp/clip.wav")
+    assert_receive {:recorder, :started}, 1_000
+    assert_receive {:recorder, {:partial, _}}
+    refute_receive {:recorder, {:stopped, _}}, 1_500
+    Recorder.set_silence(recorder, 100)
+    Recorder.stop_recording(recorder)
+    assert_receive {:recorder, {:stopped, _}}, 1_000
+  end
+
   test "a missing helper is reported, not crashed on" do
     {:ok, recorder} =
       Recorder.start_link(binary: "/nonexistent/dante-ear", sink: {:pid, self()}, name: nil)
