@@ -23,7 +23,11 @@ MIX_ENV=prod mix dante.app    # dist/Dante Journal.app and a zip to share
 ```
 
 The bundle carries its own Erlang runtime, the GPUI library, the helper and
-the OpenSSL library Erlang's crypto needs, signed ad hoc. Its minimum macOS
+the OpenSSL library Erlang's crypto needs. Run `macos/make_signing_cert.sh`
+once to create a self-signed "Dante Journal Developer" certificate; builds
+are then signed with it, so macOS keeps the app's microphone and Input
+Monitoring grants across rebuilds. Without it the app is signed ad hoc and
+asks again after every build. Its minimum macOS
 is whatever the bundled Erlang was built for (27.0 with the asdf build here). On first launch
 macOS asks for the microphone; hold-to-talk also needs Input Monitoring
 (System Settings → Privacy & Security → Input Monitoring), then a relaunch.

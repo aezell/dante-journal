@@ -12,10 +12,11 @@ defmodule Mix.Tasks.Dante.App do
   built from `native/dante-ear`, and the OpenSSL library Erlang's crypto
   needs. Runs on Macs with this one's architecture.
 
-  The app is signed ad hoc, so macOS blocks its first launch on another Mac
-  until it's allowed under System Settings → Privacy & Security. On first use
-  it asks for the microphone (dictation) and, for hold-to-talk, Input
-  Monitoring. Opened from Finder it logs to `~/Library/Logs/Dante Journal/`.
+  The app is signed with the "Dante Journal Developer" certificate when
+  `macos/make_signing_cert.sh` has created it (or with `$DANTE_SIGN_IDENTITY`),
+  so macOS keeps its microphone and Input Monitoring grants across rebuilds;
+  otherwise ad hoc. Either way another Mac blocks the first launch until it's
+  allowed under System Settings → Privacy & Security. Opened from Finder it logs to `~/Library/Logs/Dante Journal/`.
   """
   use Mix.Task
 
@@ -216,11 +217,29 @@ defmodule Mix.Tasks.Dante.App do
     end
   end
 
-  # Ad hoc: nested code first, then the bundle, which seals everything else.
+  @signing_name "Dante Journal Developer"
+
+  # Nested code first, then the bundle, which seals everything else. Signs with
+  # the "Dante Journal Developer" certificate from macos/make_signing_cert.sh
+  # (or $DANTE_SIGN_IDENTITY) when present, so the app keeps one code identity
+  # and macOS remembers its permissions across rebuilds; ad hoc otherwise.
   defp sign!(app, binaries) do
-    for path <- binaries, do: cmd!("codesign", ["--force", "--sign", "-", path])
-    cmd!("codesign", ["--force", "--sign", "-", app])
+    identity = signing_identity()
+    Mix.shell().info("Signing as #{if identity == "-", do: "ad hoc", else: identity}")
+    for path <- binaries, do: cmd!("codesign", ["--force", "--sign", identity, path])
+    cmd!("codesign", ["--force", "--sign", identity, app])
     cmd!("codesign", ["--verify", "--deep", "--strict", app])
+  end
+
+  defp signing_identity do
+    case System.get_env("DANTE_SIGN_IDENTITY") do
+      nil ->
+        {out, 0} = System.cmd("security", ["find-identity", "-v", "-p", "codesigning"])
+        if String.contains?(out, "\"#{@signing_name}\""), do: @signing_name, else: "-"
+
+      identity ->
+        identity
+    end
   end
 
   defp arch do
