@@ -870,6 +870,7 @@ defmodule DanteJournal.View do
     do: {:noreply, State.set_hotkey(state, String.to_integer(key))}
 
   def handle_event("hotkey-learn", _event, state), do: {:noreply, State.learn_hotkey(state)}
+  def handle_event("reanchor", _event, state), do: {:noreply, State.reanchor_notes(state)}
 
   def handle_event("pause:" <> ms, _event, state),
     do: {:noreply, State.set_pause(state, String.to_integer(ms))}

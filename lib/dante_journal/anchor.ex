@@ -7,6 +7,9 @@ defmodule DanteJournal.Anchor do
   """
   alias DanteJournal.{Tercet, Text}
 
+  # Words that may precede a spoken anchor without being part of it.
+  @fillers "(?:(?:in|at|on|and|so|okay|ok|um|uh|well|then)\\s+)*"
+
   @enforce_keys [:cantica, :canto]
   defstruct [:cantica, :canto, :from_line, :to_line]
 
@@ -41,7 +44,7 @@ defmodule DanteJournal.Anchor do
   Anything said that doesn't fit the poem is dropped rather than guessed.
   """
   def parse(text, %{cantica: cantica, canto: canto} = current) when is_binary(text) do
-    normalized = text |> String.downcase() |> number_words_to_digits()
+    normalized = text |> String.downcase() |> as_heard() |> number_words_to_digits()
 
     captures = Regex.named_captures(anchor_regex(), normalized) || %{}
     spoken? = Enum.any?(~w(cantica canto stanza from), &(Map.get(captures, &1, "") != ""))
@@ -84,9 +87,46 @@ defmodule DanteJournal.Anchor do
   def strip_phrase(text, ""), do: text
 
   def strip_phrase(text, phrase) do
-    pattern = ~r/^\s*(?:in\s+|at\s+|on\s+)?#{Regex.escape(phrase)}\s*[,.;:—-]*\s*/iu
-    stripped = Regex.replace(pattern, text, "", global: false)
-    if stripped == "", do: text, else: upcase_first(stripped)
+    exact = ~r/^[\s,.:;—-]*#{@fillers}#{Regex.escape(phrase)}\s*[,.;:—-]*\s*/iu
+
+    # The phrase comes from the normalised transcript ("canto 1, line 7"); the
+    # note still reads as heard ("Encanto one, line 7"), so fall back to a
+    # tolerant pattern built from the phrase's words.
+    stripped =
+      case Regex.replace(exact, text, "", global: false) do
+        ^text -> Regex.replace(heard_pattern(phrase), text, "", global: false)
+        other -> other
+      end
+
+    if String.trim(stripped) == "", do: text, else: upcase_first(stripped)
+  end
+
+  defp heard_pattern(phrase) do
+    tokens =
+      phrase
+      |> String.split(~r/[\s,.:;—-]+/u, trim: true)
+      |> Enum.map(fn
+        "canto" ->
+          "(?:en|in|un)?canto"
+
+        "in" ->
+          "(?:in|en|and)?"
+
+        token ->
+          if Regex.match?(~r/^\d+$/, token),
+            do: "(?:\\d+|(?:[a-z]+[\\s-]*){1,4}?)",
+            else: Regex.escape(token)
+      end)
+
+    ~r/^[\s,.:;—-]*#{@fillers}#{Enum.join(tokens, "[\\s,.:;—-]*")}\s*[,.;:—-]*\s*/iu
+  end
+
+  # Words the speech model runs together or mishears around an anchor:
+  # "In Canto 1" comes back as "Encanto 1".
+  defp as_heard(text) do
+    text
+    |> String.replace(~r/\b(?:en|in|un)canto\b/u, "in canto")
+    |> String.replace(~r/\bcantos\b/u, "canto")
   end
 
   # -- Grammar -----------------------------------------------------------------
@@ -97,7 +137,7 @@ defmodule DanteJournal.Anchor do
 
   defp anchor_regex do
     ~r/
-      ^[\s,.:;—-]*(?:in\s+|at\s+|on\s+)?
+      ^[\s,.:;—-]*#{@fillers}
       (?:(?<cantica>#{@cantica_words})\b[\s,.:]*)?
       (?:(?:canto\s+|(?<=\b(?:inferno|inf|hell|purgatorio|purg|purgatory|paradiso|par|paradise|heaven)[.\s,:]{1,3}))(?<canto>[0-9]+|[ivxl]+)(?=[.\s,:]|$)(?:\.(?<from2>[0-9]+)(?:[–-](?<to2>[0-9]+))?)?\b[\s,.:]*)?
       (?:
@@ -151,7 +191,7 @@ defmodule DanteJournal.Anchor do
     do:
       phrase
       |> String.trim()
-      |> String.replace(~r/^[\s,.:;—-]*(?:in|at|on)\s+/u, "")
+      |> String.replace(~r/^[\s,.:;—-]*#{@fillers}/u, "")
       |> String.trim()
 
   defp blank_to_nil(""), do: nil

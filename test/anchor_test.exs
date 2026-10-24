@@ -62,6 +62,32 @@ defmodule DanteJournal.AnchorTest do
     assert {anchor.from_line, anchor.to_line} == {13, 15}
   end
 
+  test "anchors as the speech model hears them" do
+    {anchor, phrase, :spoken} =
+      Anchor.parse("Encanto one, line 7, there's a word, bitter death.", @here)
+
+    assert anchor == %Anchor{cantica: :inferno, canto: 1, from_line: 7, to_line: 7}
+    assert phrase == "canto 1, line 7"
+
+    assert Anchor.strip_phrase("Encanto one, line 7, there's a word, bitter death.", phrase) ==
+             "There's a word, bitter death."
+
+    {anchor, phrase, :spoken} =
+      Anchor.parse("And Encanto one, line 16, is that talking about the moon?", @here)
+
+    assert anchor == %Anchor{cantica: :inferno, canto: 1, from_line: 16, to_line: 16}
+
+    assert Anchor.strip_phrase(
+             "And Encanto one, line 16, is that talking about the moon?",
+             phrase
+           ) == "Is that talking about the moon?"
+
+    {anchor, _, :spoken} =
+      Anchor.parse("Okay so canto twenty-one stanza three, the devils", @here)
+
+    assert anchor == %Anchor{cantica: :inferno, canto: 21, from_line: 7, to_line: 9}
+  end
+
   test "number words become digits" do
     assert Anchor.number_words_to_digits("canto twenty-one stanza three") == "canto 21 stanza 3"
     assert Anchor.number_words_to_digits("line one hundred and twelve") == "line 112"

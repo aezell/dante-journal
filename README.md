@@ -64,8 +64,11 @@ offers "Read the Longfellow translation" to switch.
 | ⌘Q | Quit |
 
 Say where you are, then your note: "Canto 2, stanza 12, Dante sees the
-leopard…". The anchor is parsed from what you said; without one, the note
-attaches to the tercet you clicked, or to the open canto. A confirm card
+leopard…" or "In canto 1, line 7, …". The anchor is parsed from what you
+said, tolerating the speech model's habits ("Encanto one"); without one,
+the note attaches to the tercet you clicked, or to the open canto. If a
+note ended up on a whole canto, ⌘K → "Re-read spoken anchors of
+whole-canto notes" tries again with the current parser. A confirm card
 lets you fix the anchor and the note type before saving.
 
 Lines with notes carry a coloured bar in the margin. Click a note to scroll

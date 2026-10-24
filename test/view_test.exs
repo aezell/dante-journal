@@ -259,6 +259,26 @@ defmodule DanteJournal.ViewTest do
     refute payload =~ "Tercet 1, "
   end
 
+  test "whole-canto notes can be re-anchored from their spoken phrase", %{notes: notes} do
+    seed(
+      notes,
+      "a",
+      :inferno,
+      1,
+      nil,
+      :note,
+      "Encanto one, line 7, there's a word, bitter death."
+    )
+
+    seed(notes, "b", :inferno, 1, nil, :note, "A thought about the whole canto.")
+    runtime = start_runtime!(DanteJournal.Desktop, args: State.initial(notes: notes))
+    click(runtime, "reanchor")
+    assert %{notice: "Re-anchored 1 note to its lines."} = assigns(runtime)
+    assert %Anchor{from_line: 7, to_line: 7} = Notes.get(notes, "a").anchor
+    assert Notes.get(notes, "a").anchor_phrase == "canto 1, line 7"
+    assert %Anchor{from_line: nil} = Notes.get(notes, "b").anchor
+  end
+
   test "the palette goes to a place or runs a command", %{notes: notes} do
     runtime =
       start_runtime!(DanteJournal.Desktop, args: State.initial(notes: notes, recorder: self()))

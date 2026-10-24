@@ -401,6 +401,35 @@ defmodule DanteJournal.State do
     %{state | form: nil}
   end
 
+  @doc "Re-reads the spoken anchor of notes that fell back to a whole canto."
+  def reanchor_notes(%{notes: nil} = state), do: state
+
+  def reanchor_notes(state) do
+    fixed =
+      for note <- state.all_notes,
+          note.anchor.from_line == nil,
+          {anchor, phrase, :spoken} <-
+            [
+              Anchor.parse(note.text, %{
+                cantica: note.anchor.cantica,
+                canto: note.anchor.canto,
+                tercet: nil
+              })
+            ],
+          anchor.from_line != nil,
+          :ok == Notes.save(state.notes, %{note | anchor: anchor, anchor_phrase: phrase}),
+          do: note.id
+
+    notice =
+      case length(fixed) do
+        0 -> "No whole-canto notes had a readable spoken anchor."
+        1 -> "Re-anchored 1 note to its lines."
+        n -> "Re-anchored #{n} notes to their lines."
+      end
+
+    %{refresh_notes(state) | notice: notice}
+  end
+
   def request_delete(state, id), do: %{state | pending_delete: id}
 
   def delete_note(%{notes: nil} = state, _id), do: state
@@ -465,6 +494,7 @@ defmodule DanteJournal.State do
     {"export:md", "Export shown notes as Markdown", ""},
     {"export:txt", "Export shown notes as text", ""},
     {"toggle-theme", "Toggle dark and light", "⌘⇧L"},
+    {"reanchor", "Re-read spoken anchors of whole-canto notes", ""},
     {"quit", "Quit Dante Journal", "⌘Q"},
     {"hotkey-learn", "Set the hold-to-talk key… (press a key or a chord like ⌘])", ""},
     {"hotkey:61", "Hold-to-talk key: right Option", ""},
