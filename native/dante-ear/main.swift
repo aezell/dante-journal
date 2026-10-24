@@ -432,7 +432,9 @@ final class ClipPlayer: NSObject, AVAudioPlayerDelegate {
             player.delegate = self
             self.player = player
             self.path = path
-            if player.play() {
+            let ok = player.play()
+            log("play \(URL(fileURLWithPath: path).lastPathComponent): \(ok ? "started" : "refused"), \(player.duration) s")
+            if ok {
                 emit(["event": "play", "state": "started", "path": path])
             } else {
                 emit(["event": "play", "state": "failed", "path": path, "message": "could not start playback"])
