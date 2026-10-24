@@ -11,9 +11,11 @@ defmodule DanteJournal.Desktop do
     {:ok,
      [
        window "Dante Journal" do
-         size(1200, 780)
-         min_size(900, 600)
+         size(1280, 800)
+         min_size(960, 600)
          chrome(:content)
+         shortcut("toggle-recording", "primary-shift-d")
+         shortcut("draft-save", "primary-s")
          shortcut("toggle-theme", "primary-shift-l")
          shortcut("toggle-italian", "primary-i")
          shortcut("next-canto", "primary-shift-n")

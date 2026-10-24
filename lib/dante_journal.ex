@@ -4,16 +4,31 @@ defmodule DanteJournal do
   on-device and anchored to the canto and tercet they talk about.
   """
 
-  @doc "Starts the native window and its workers under one supervisor."
+  @doc "Starts the note store, the transcription helper and the window under one supervisor."
   def start(opts \\ []) do
-    state = DanteJournal.State.initial(opts)
+    notes_dir = Keyword.get(opts, :notes_dir, DanteJournal.Notes.default_dir())
 
-    runtime =
+    # The servers don't exist yet, so the window starts without notes and is
+    # told to read them once everything is up.
+    state = %{
+      DanteJournal.State.initial(opts)
+      | notes: DanteJournal.Notes,
+        recorder: DanteJournal.Recorder
+    }
+
+    children = [
+      {DanteJournal.Notes, name: DanteJournal.Notes, dir: notes_dir},
       {DanteJournal.Desktop,
        name: DanteJournal.Runtime,
        args: state,
-       display_opts: [name: DanteJournal.Display, theme: state.theme]}
+       display_opts: [name: DanteJournal.Display, theme: state.theme]},
+      {DanteJournal.Recorder, name: DanteJournal.Recorder, sink: {:runtime, DanteJournal.Runtime}}
+    ]
 
-    Supervisor.start_link([runtime], strategy: :rest_for_one)
+    with {:ok, supervisor} <- Supervisor.start_link(children, strategy: :rest_for_one) do
+      # The store started before the window; now the window can read it.
+      GPUI.Runtime.send_view(DanteJournal.Runtime, 1, :refresh_notes)
+      {:ok, supervisor}
+    end
   end
 end

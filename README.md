@@ -20,12 +20,19 @@ mix dante                     # or: mix dante --light
 
 | Shortcut | Action |
 | --- | --- |
+| ⌘⇧D | Start a dictation; press again to stop (it also stops after a pause) |
+| ⌘S | Save the note in the confirm card |
 | ⌘I | Toggle the Italian (Petrocchi) column |
 | ⌘⇧N / ⌘⇧P | Next / previous canto |
 | ⌘⇧L | Toggle dark / light |
 
-Click a tercet to select it; dictated notes without a spoken anchor will
-attach to the selected tercet.
+Say where you are, then your note: "Canto 2, stanza 12, Dante sees the
+leopard…". The anchor is parsed from what you said; without one, the note
+attaches to the tercet you clicked, or to the open canto. A confirm card
+lets you fix the anchor and the note type before saving.
+
+Notes live as one JSON file each, with their audio clips, under
+`~/Library/Application Support/Dante Journal/notes`.
 
 ## The transcription helper
 

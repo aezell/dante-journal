@@ -218,7 +218,21 @@ a preferences file (folded into Phase 3).
   ⌘K go-to-canto, ⌘⇧L theme, preferences file.
 Done when: you can scroll any canto in either language from the sidebar.
 
-### Phase 2 — dictate and anchor (2–3 days)
+### Phase 2 — dictate and anchor (done 2026-10-24)
+`Recorder` supervises the helper over a Port, relays partials, stops after
+3 s of silence once something was heard (15 s if nothing was), restarts a
+dead helper, and can transcribe an audio file. `Anchor.parse/2` handles
+cantica words, canto digits/Roman/number words, stanza/tercet, line and
+line ranges, drops impossible numbers and falls back to the selected
+tercet, then the canto. `Classifier` rules; `Notes` store as one JSON file
+per note plus WAV clips under `~/Library/Application Support/Dante
+Journal/notes`. UI: ⌘⇧D record/stop, banner with live transcript, confirm
+card (anchor choices, type chips, ⌘S save, discard), gutter markers
+coloured by type, sidebar counts, a notes pane for the open canto with
+two-step delete. Verified end to end on the native display with a
+synthesized Purgatorio note (anchor Purg. 9.70–72, type question, marker
+and jump) and a live mic session. 26 tests.
+Carried to Phase 3: editing a note, playback, typed notes, ⌘K palette.
 - `Recorder` GenServer: supervises the helper Port, restarts it, forwards
   partial/final events to the view, stores the clip.
 - `Anchor` parser with a test table of spoken phrases ("canto two stanza
