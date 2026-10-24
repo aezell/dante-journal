@@ -10,6 +10,7 @@
 //      {"cmd":"learn"}                              report the next key pressed, for choosing one
 //      {"cmd":"play","path":"/path/clip.wav"}       play a clip (output only, no permission needed)
 //      {"cmd":"stopplay"}
+//      {"cmd":"normalize","path":"/path/clip.wav"}  bring an old clip up to level (done for new ones)
 //      {"cmd":"quit"}
 // out: {"event":"ready","locale":"en_US"}
 //      {"event":"started"}
@@ -173,6 +174,9 @@ actor Ear {
         let text = try await closeAnalyzer()
         let seconds = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         clipFile = nil
+        if let clipPath, let gain = normalizeClip(at: clipPath) {
+            log("clip normalised, gain \(String(format: "%.1f", gain))x")
+        }
         emit(["event": "stopped", "text": text, "clip": clipPath ?? "", "ms": Int(seconds * 1000)])
         clipPath = nil
         startedAt = nil
@@ -415,6 +419,59 @@ final class HotkeyMonitor {
     }
 }
 
+// MARK: - Clip level
+
+/// Microphone input often lands around -50 dBFS, inaudible on playback though
+/// fine for transcription. Rewrites a clip peak-normalised to -1 dBFS as
+/// 16-bit PCM (a quarter the size). Returns the gain applied, or nil if the
+/// file was left alone.
+func normalizeClip(at path: String) -> Float? {
+    let url = URL(fileURLWithPath: path)
+    guard let file = try? AVAudioFile(forReading: url), file.length > 0 else { return nil }
+    let format = file.processingFormat
+    guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)),
+          (try? file.read(into: buffer)) != nil, let channels = buffer.floatChannelData else { return nil }
+    let frames = Int(buffer.frameLength)
+    var peak: Float = 0
+    for c in 0..<Int(format.channelCount) {
+        for i in 0..<frames { peak = max(peak, abs(channels[c][i])) }
+    }
+    guard peak > 0 else { return nil }
+    // Cap the boost so a recording of nothing doesn't become a roar.
+    let gain = min(0.89 / peak, 60)
+    if gain > 1.02 {
+        for c in 0..<Int(format.channelCount) {
+            for i in 0..<frames { channels[c][i] *= gain }
+        }
+    }
+    let settings: [String: Any] = [
+        AVFormatIDKey: kAudioFormatLinearPCM,
+        AVSampleRateKey: format.sampleRate,
+        AVNumberOfChannelsKey: format.channelCount,
+        AVLinearPCMBitDepthKey: 16,
+        AVLinearPCMIsFloatKey: false,
+        AVLinearPCMIsBigEndianKey: false,
+    ]
+    let temporary = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).tmp.wav")
+    do {
+        let out = try AVAudioFile(forWriting: temporary, settings: settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+        try out.write(from: buffer)
+    } catch {
+        try? FileManager.default.removeItem(at: temporary)
+        emitError("normalize: \(error.localizedDescription)")
+        return nil
+    }
+    // `out` closes when it goes out of scope above; replace the original.
+    do {
+        _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
+    } catch {
+        try? FileManager.default.removeItem(at: temporary)
+        emitError("normalize: \(error.localizedDescription)")
+        return nil
+    }
+    return gain
+}
+
 // MARK: - Clip playback
 
 /// Plays one clip at a time with AVAudioPlayer. Output needs no permission,
@@ -508,6 +565,10 @@ for try await line in FileHandle.standardInput.bytes.lines {
             ClipPlayer.shared.play(path: path)
         case "stopplay":
             ClipPlayer.shared.stop()
+        case "normalize":
+            guard let path = command["path"] as? String else { throw EarError("normalize needs a path") }
+            let gain = normalizeClip(at: path)
+            emit(["event": "normalized", "path": path, "gain": gain ?? 1])
         case "quit":
             ClipPlayer.shared.stop()
             HotkeyMonitor.shared.stop()
