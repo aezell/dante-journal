@@ -283,7 +283,13 @@ requests and the app explains when denied. `mix dante.app` builds a
 release into `Dante Journal.app` with the helper, the precompiled GPUI
 library, Homebrew's libcrypto rebound with `install_name_tool`, an icon
 drawn by `macos/make_icon.swift`, microphone and speech usage strings, ad
-hoc signing and a zip. 37 tests. Two things learned: `gpui_native` 0.2.0
+hoc signing and a zip. 37 tests. The bundle's executable is a small Swift
+launcher (`macos/launcher.swift`) that runs the release as a child and stays
+alive: a shell script that exec'd into Erlang made macOS attribute the
+helper's microphone and Input Monitoring requests to `erlexec`, so grants
+never matched. Builds are signed with a self-signed certificate
+(`macos/make_signing_cert.sh`) so the identity, and the grants, persist.
+Two things learned: `gpui_native` 0.2.0
 must be declared with `env: :release`, or inside any git checkout it tries
 to build its Rust crate; and the asdf-built Erlang runtime sets the
 bundle's minimum macOS to 27.0 (an OTP built with an older deployment

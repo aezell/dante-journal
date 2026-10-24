@@ -59,9 +59,7 @@ defmodule Mix.Tasks.Dante.App do
     File.chmod!(helper, 0o755)
 
     File.cp!("macos/AppIcon.icns", Path.join(contents, "Resources/AppIcon.icns"))
-    launcher = Path.join([contents, "MacOS", "DanteJournal"])
-    File.write!(launcher, launcher())
-    File.chmod!(launcher, 0o755)
+    build_launcher!(Path.join([contents, "MacOS", "DanteJournal"]))
 
     binaries = mach_o_files(contents)
     bundle_homebrew_libraries!(binaries)
@@ -90,21 +88,29 @@ defmodule Mix.Tasks.Dante.App do
     end
   end
 
-  # Opened from Finder, nothing reads stdout, so it goes to a log file. The
-  # release writes nothing inside the bundle, which may be read-only.
-  defp launcher do
-    """
-    #!/bin/sh
-    contents=$(cd "$(dirname "$0")/.." && pwd)
-    logs="$HOME/Library/Logs/#{@app_name}"
-    mkdir -p "$logs"
-    export RELEASE_TMP="${TMPDIR:-/tmp}/dante-journal"
-    export ERL_CRASH_DUMP="$logs/erl_crash.dump"
-    if [ -t 1 ]; then
-      exec "$contents/Resources/release/bin/#{@release}" eval "DanteJournal.CLI.main(System.argv())" "$@"
-    fi
-    exec "$contents/Resources/release/bin/#{@release}" eval "DanteJournal.CLI.main(System.argv())" "$@" >> "$logs/dante-journal.log" 2>&1
-    """
+  # The bundle's executable is a small Swift program (macos/launcher.swift)
+  # that runs the release as a child and stays alive, so macOS attributes the
+  # helper's permission requests to this app rather than to Erlang's binaries.
+  defp build_launcher!(path) do
+    Mix.shell().info("Building the launcher…")
+
+    case System.cmd(
+           "swiftc",
+           [
+             "-O",
+             "-swift-version",
+             "5",
+             "-target",
+             "arm64-apple-macos26.0",
+             "-o",
+             path,
+             "macos/launcher.swift"
+           ],
+           stderr_to_stdout: true
+         ) do
+      {_out, 0} -> File.chmod!(path, 0o755)
+      {out, status} -> Mix.raise("swiftc failed on macos/launcher.swift (#{status}):\n#{out}")
+    end
   end
 
   defp info_plist(version, minimum) do
