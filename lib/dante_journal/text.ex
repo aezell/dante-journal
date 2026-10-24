@@ -53,9 +53,10 @@ defmodule DanteJournal.Text do
     end)
   end
 
-  @doc "The folder imports such as Mandelbaum live in."
+  @doc "The folder imports such as Mandelbaum live in; tests point it elsewhere."
   def data_dir do
-    Path.join(:filename.basedir(:user_data, ~c"Dante Journal") |> to_string(), "texts")
+    Application.get_env(:dante_journal, :texts_dir) ||
+      Path.join(:filename.basedir(:user_data, ~c"Dante Journal") |> to_string(), "texts")
   end
 
   def imported_path(text), do: Path.join(data_dir(), "#{text}.json")

@@ -16,11 +16,41 @@ mix deps.get
 mix dante                     # or: mix dante --light
 ```
 
+## Build the Mac app
+
+```sh
+MIX_ENV=prod mix dante.app    # dist/Dante Journal.app and a zip to share
+```
+
+The bundle carries its own Erlang runtime, the GPUI library, the helper and
+the OpenSSL library Erlang's crypto needs, signed ad hoc. Its minimum macOS
+is whatever the bundled Erlang was built for (27.0 with the asdf build here). On first launch
+macOS asks for the microphone; hold-to-talk also needs Input Monitoring
+(System Settings → Privacy & Security → Input Monitoring), then a relaunch.
+Opened from Finder the app logs to `~/Library/Logs/Dante Journal/`. The icon
+is drawn by `macos/make_icon.sh`.
+
+## The Mandelbaum translation
+
+Longfellow ships with the app. Allen Mandelbaum's translation is in
+copyright, so it is never part of this repository; instead
+
+```sh
+mix dante.import
+```
+
+fetches it canto by canto from the University of Virginia's World of Dante
+for your personal use, validates every canto against the Petrocchi line
+counts, and writes it to `~/Library/Application Support/Dante Journal/texts/`.
+Restart the app afterwards: it then reads Mandelbaum by default, and ⌘K
+offers "Read the Longfellow translation" to switch.
+
 ## Shortcuts
 
 | Shortcut | Action |
 | --- | --- |
 | ⌘⇧D | Start a dictation; press again to stop (it also stops after a pause) |
+| hold right ⌥ | Hold-to-talk from any app: press to start, release to stop; a quick tap toggles instead. Change or turn off the key from ⌘K |
 | ⌘N | Type a note, anchored to the selected tercet or the open canto |
 | ⌘S | Save the note in the card |
 | ⌘K | Go to a canto ("inf 5", "purg 9.70") or run a command |

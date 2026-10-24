@@ -20,7 +20,10 @@ defmodule DanteJournal.MixProject do
     [
       # Published packages ship a precompiled Apple silicon NIF, so no Rust
       # toolchain is needed. `gpui_native` brings `gpui` and `gpui_components`.
-      {:gpui_native, "== 0.2.0"}
+      # It compiles in its `:release` env: in any other env, 0.2.0 treats a
+      # package that sits inside a git checkout (this repository) as a source
+      # checkout and tries to build its Rust crate.
+      {:gpui_native, "== 0.2.0", env: :release}
     ]
   end
 end

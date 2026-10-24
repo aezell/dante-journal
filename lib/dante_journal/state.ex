@@ -20,6 +20,10 @@ defmodule DanteJournal.State do
       recorder: Keyword.get(opts, :recorder),
       player: Keyword.get(opts, :player),
       recorder_status: :starting,
+      # Key code watched for hold-to-talk (0 = off) and what the helper says about it.
+      hotkey: Keyword.get(opts, :hotkey, 61),
+      hotkey_status: :off,
+      hotkey_down_at: nil,
       # nil, or the dictation in progress.
       recording: nil,
       # nil, or the note form in the card.
@@ -83,6 +87,26 @@ defmodule DanteJournal.State do
     do: %{state | theme: if(state.theme == :dark, do: :light, else: :dark)} |> remember()
 
   def toggle_italian(state), do: %{state | italian: not state.italian} |> remember()
+
+  def set_english(state, english) do
+    if english in Text.english_translations(),
+      do: %{state | english: english} |> remember(),
+      else: state
+  end
+
+  def set_hotkey(state, key) when key in [0, 61, 54, 62, 63] do
+    if state.recorder,
+      do: DanteJournal.Recorder.set_hotkey(state.recorder, if(key == 0, do: nil, else: key))
+
+    %{state | hotkey: key, hotkey_status: if(key == 0, do: :off, else: state.hotkey_status)}
+    |> remember()
+  end
+
+  def hotkey_name(61), do: "right ⌥"
+  def hotkey_name(54), do: "right ⌘"
+  def hotkey_name(62), do: "right ⌃"
+  def hotkey_name(63), do: "fn"
+  def hotkey_name(_), do: "off"
 
   defp remember(state) do
     Preferences.remember(state.preferences_path, state)
@@ -360,7 +384,12 @@ defmodule DanteJournal.State do
     {"group:day", "Group notes by day", ""},
     {"export:md", "Export shown notes as Markdown", ""},
     {"export:txt", "Export shown notes as text", ""},
-    {"toggle-theme", "Toggle dark and light", "⌘⇧L"}
+    {"toggle-theme", "Toggle dark and light", "⌘⇧L"},
+    {"hotkey:61", "Hold-to-talk key: right Option", ""},
+    {"hotkey:54", "Hold-to-talk key: right Command", ""},
+    {"hotkey:62", "Hold-to-talk key: right Control", ""},
+    {"hotkey:63", "Hold-to-talk key: fn", ""},
+    {"hotkey:0", "Hold-to-talk: off", ""}
   ]
 
   @doc "Palette choices for the query: a place in the poem first, then commands."
@@ -383,8 +412,13 @@ defmodule DanteJournal.State do
           []
       end
 
+    translations =
+      for english <- Text.english_translations(),
+          english != state.english,
+          do: {"english:#{english}", "Read the #{Text.translation_name(english)} translation", ""}
+
     commands =
-      for {event, label, detail} <- @commands,
+      for {event, label, detail} <- @commands ++ translations,
           down == "" or String.contains?(String.downcase(label), down),
           do: %{event: event, label: label, detail: detail}
 

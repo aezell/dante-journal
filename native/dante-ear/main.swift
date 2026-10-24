@@ -5,16 +5,20 @@
 // in:  {"cmd":"start","clip":"/path/to/clip.wav"}   begin a dictation
 //      {"cmd":"stop"}                               end it
 //      {"cmd":"file","path":"/path/to/audio"}       transcribe a file
+//      {"cmd":"hotkey","key":61}                    watch a key system-wide (0 = stop watching)
 //      {"cmd":"quit"}
 // out: {"event":"ready","locale":"en_US"}
 //      {"event":"started"}
 //      {"event":"partial","text":"..."}             finalized + volatile so far
 //      {"event":"stopped","text":"...","clip":"...","ms":12300}
 //      {"event":"transcript","text":"...","path":"..."}
+//      {"event":"hotkey","status":"listening","key":61} | {"event":"hotkey","status":"denied"}
+//      {"event":"hotkey","state":"down"} | {"event":"hotkey","state":"up"}
 //      {"event":"error","message":"..."}
 //      {"event":"log","message":"..."}
 
 import AVFoundation
+import CoreGraphics
 import Foundation
 import Speech
 
@@ -215,6 +219,106 @@ struct EarError: Error, CustomStringConvertible {
     init(_ description: String) { self.description = description }
 }
 
+// MARK: - Hold-to-talk hotkey
+
+/// Watches one key system-wide with a listen-only CGEventTap on its own run
+/// loop, so holding it works while the journal is in the background. Needs
+/// Input Monitoring permission; the first call asks for it.
+final class HotkeyMonitor {
+    static let shared = HotkeyMonitor()
+    private var thread: Thread?
+    private var runLoop: CFRunLoop?
+    private var tap: CFMachPort?
+    private(set) var keyCode: Int64 = 0
+    private var down = false
+
+    // Modifier keys arrive as flagsChanged; everything else as keyDown/keyUp.
+    private static let modifierMasks: [Int64: CGEventFlags] = [
+        54: .maskCommand, 55: .maskCommand,
+        56: .maskShift, 60: .maskShift,
+        58: .maskAlternate, 61: .maskAlternate,
+        59: .maskControl, 62: .maskControl,
+        63: .maskSecondaryFn,
+    ]
+
+    func stop() {
+        if let runLoop { CFRunLoopStop(runLoop) }
+        if let tap { CGEvent.tapEnable(tap: tap, enable: false) }
+        tap = nil
+        runLoop = nil
+        thread = nil
+        keyCode = 0
+        down = false
+    }
+
+    func start(keyCode code: Int64) {
+        stop()
+        guard code > 0 else { return }
+        if !CGPreflightListenEventAccess() {
+            // Asks once; macOS shows the Input Monitoring prompt for the responsible app.
+            _ = CGRequestListenEventAccess()
+            if !CGPreflightListenEventAccess() {
+                emit(["event": "hotkey", "status": "denied"])
+                return
+            }
+        }
+        keyCode = code
+        let thread = Thread { [weak self] in
+            guard let self else { return }
+            let mask: CGEventMask =
+                (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.keyUp.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
+            let callback: CGEventTapCallBack = { _, type, event, userInfo in
+                let monitor = Unmanaged<HotkeyMonitor>.fromOpaque(userInfo!).takeUnretainedValue()
+                monitor.handle(type: type, event: event)
+                return Unmanaged.passUnretained(event)
+            }
+            guard let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
+                eventsOfInterest: mask, callback: callback,
+                userInfo: Unmanaged.passUnretained(self).toOpaque()
+            ) else {
+                emit(["event": "hotkey", "status": "denied"])
+                return
+            }
+            self.tap = tap
+            self.runLoop = CFRunLoopGetCurrent()
+            let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+            CGEvent.tapEnable(tap: tap, enable: true)
+            emit(["event": "hotkey", "status": "listening", "key": code])
+            CFRunLoopRun()
+        }
+        thread.name = "dante-ear.hotkey"
+        thread.start()
+        self.thread = thread
+    }
+
+    private func handle(type: CGEventType, event: CGEvent) {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
+            return
+        }
+        let code = event.getIntegerValueField(.keyboardEventKeycode)
+        guard code == keyCode else { return }
+        let pressed: Bool
+        switch type {
+        case .flagsChanged:
+            guard let mask = HotkeyMonitor.modifierMasks[code] else { return }
+            pressed = event.flags.contains(mask)
+        case .keyDown:
+            if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 { return }
+            pressed = true
+        case .keyUp:
+            pressed = false
+        default:
+            return
+        }
+        guard pressed != down else { return }
+        down = pressed
+        emit(["event": "hotkey", "state": pressed ? "down" : "up"])
+    }
+}
+
 // MARK: - Command loop
 
 guard #available(macOS 26.0, *) else {
@@ -250,7 +354,11 @@ for try await line in FileHandle.standardInput.bytes.lines {
         case "file":
             guard let path = command["path"] as? String else { throw EarError("file needs a path") }
             try await ear.transcribe(path: path)
+        case "hotkey":
+            let key = (command["key"] as? NSNumber)?.int64Value ?? 0
+            HotkeyMonitor.shared.start(keyCode: key)
         case "quit":
+            HotkeyMonitor.shared.stop()
             if await ear.running { try? await ear.stop() }
             exit(0)
         default:

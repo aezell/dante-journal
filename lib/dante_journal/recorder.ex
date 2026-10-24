@@ -8,7 +8,7 @@ defmodule DanteJournal.Recorder do
 
       :ready | {:unavailable, reason} | :started | {:partial, text} | {:tick, ms}
       | {:stopped, %{text: text, clip: path, ms: ms}} | {:transcript, %{text: text, path: path}}
-      | {:error, message}
+      | {:hotkey, :down | :up | {:listening, key} | :denied} | {:error, message}
   """
   use GenServer
   require Logger
@@ -32,6 +32,8 @@ defmodule DanteJournal.Recorder do
   @doc "Transcribes an audio file instead of the microphone; emits `{:transcript, ...}`."
   def transcribe_file(server, path), do: GenServer.cast(server, {:transcribe_file, path})
   def status(server), do: GenServer.call(server, :status)
+  @doc "Watches a key system-wide for hold-to-talk; `nil` stops watching."
+  def set_hotkey(server, key), do: GenServer.cast(server, {:set_hotkey, key})
 
   # -- Server ------------------------------------------------------------------
 
@@ -51,7 +53,8 @@ defmodule DanteJournal.Recorder do
       silence_timer: nil,
       max_timer: nil,
       tick_timer: nil,
-      buffer: ""
+      buffer: "",
+      hotkey: Keyword.get(opts, :hotkey)
     }
 
     {:ok, open(state)}
@@ -85,6 +88,15 @@ defmodule DanteJournal.Recorder do
 
   def handle_cast({:transcribe_file, _path}, state) do
     notify(state, {:error, reason_for(state.phase)})
+    {:noreply, state}
+  end
+
+  def handle_cast({:set_hotkey, key}, state) do
+    state = %{state | hotkey: key}
+
+    if state.phase not in [:starting, :restarting, :unavailable],
+      do: command(state, %{cmd: "hotkey", key: key || 0})
+
     {:noreply, state}
   end
 
@@ -143,7 +155,20 @@ defmodule DanteJournal.Recorder do
 
   defp handle_event(%{"event" => "ready"}, state) do
     notify(state, :ready)
+    if state.hotkey, do: command(state, %{cmd: "hotkey", key: state.hotkey})
     %{state | phase: :idle}
+  end
+
+  defp handle_event(%{"event" => "hotkey"} = event, state) do
+    case event do
+      %{"state" => "down"} -> notify(state, {:hotkey, :down})
+      %{"state" => "up"} -> notify(state, {:hotkey, :up})
+      %{"status" => "listening", "key" => key} -> notify(state, {:hotkey, {:listening, key}})
+      %{"status" => "denied"} -> notify(state, {:hotkey, :denied})
+      _ -> :ok
+    end
+
+    state
   end
 
   defp handle_event(%{"event" => "started"}, state) do

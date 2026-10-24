@@ -267,7 +267,25 @@ Deferred: PDF export, tags.
   HTML rendering to PDF with WebKit) or `cupsfilter`; not a V1 blocker.
 Done when: "all questions in Purgatorio" is one click and exports cleanly.
 
-### Phase 4 — Mandelbaum, hold-to-talk, the .app (1–2 days)
+### Phase 4 — Mandelbaum, hold-to-talk, the .app (done 2026-10-24)
+`mix dante.import` fetches Mandelbaum from UVA's World of Dante (URL scheme
+`inferno.xml/1.N`, `purgatory.xml/2.N`, `paradise.xml/3.N`; one canto per
+page with Italian beside English), validates each canto's line count
+against Petrocchi, compares the page's Italian to ours as a drift check,
+and writes `~/Library/Application Support/Dante Journal/texts/mandelbaum.json`;
+the reader prefers it and ⌘K switches translations. `dante-ear` gained a
+listen-only `CGEventTap` on its own run loop for one key (right ⌥ by
+default; right ⌘, right ⌃, fn or off from ⌘K): press starts, held release
+stops, a quick tap toggles; it needs Input Monitoring, which the helper
+requests and the app explains when denied. `mix dante.app` builds a
+release into `Dante Journal.app` with the helper, the precompiled GPUI
+library, Homebrew's libcrypto rebound with `install_name_tool`, an icon
+drawn by `macos/make_icon.swift`, microphone and speech usage strings, ad
+hoc signing and a zip. 37 tests. Two things learned: `gpui_native` 0.2.0
+must be declared with `env: :release`, or inside any git checkout it tries
+to build its Rust crate; and the asdf-built Erlang runtime sets the
+bundle's minimum macOS to 27.0 (an OTP built with an older deployment
+target would lower it).
 - `mix dante.import`: fetch, parse, normalise, validate line counts
   against Petrocchi, write to the data folder; reader prefers it.
 - Helper gains a global hotkey via `CGEventTap`; preferences let you pick

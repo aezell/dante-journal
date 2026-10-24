@@ -56,6 +56,18 @@ defmodule DanteJournal.RecorderTest do
     assert Recorder.status(recorder) == :idle
   end
 
+  test "a hotkey is sent once the helper is ready and its presses are relayed" do
+    recorder = start(hotkey: 61)
+    assert_receive {:recorder, {:hotkey, {:listening, 61}}}, 1_000
+    assert_receive {:recorder, {:hotkey, :down}}
+    assert_receive {:recorder, {:hotkey, :up}}
+
+    Recorder.set_hotkey(recorder, 99)
+    assert_receive {:recorder, {:hotkey, :denied}}, 1_000
+    Recorder.set_hotkey(recorder, nil)
+    refute_receive {:recorder, {:hotkey, _}}, 100
+  end
+
   test "a missing helper is reported, not crashed on" do
     {:ok, recorder} =
       Recorder.start_link(binary: "/nonexistent/dante-ear", sink: {:pid, self()}, name: nil)

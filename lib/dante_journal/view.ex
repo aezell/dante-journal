@@ -579,7 +579,7 @@ defmodule DanteJournal.View do
       <text id="status" class="text-[11px]" style={[color: {:theme, :muted}]}>{assigns.status}</text>
       {if assigns.notice, do: notice(assigns.notice, "notice"), else: []}
       <div class="flex-1" />
-      <text class="text-[11px]" style={[color: {:theme, :muted}]}>{recorder_label(assigns.recorder_status)}</text>
+      <text class="text-[11px]" style={[color: {:theme, :muted}]}>{recorder_label(assigns.recorder_status)}{hotkey_label(assigns)}</text>
       <text class="text-[11px]" style={[color: {:theme, :muted}]}>{selection_label(assigns)}</text>
     </div>
     """
@@ -592,6 +592,12 @@ defmodule DanteJournal.View do
     <text id={assigns.id} class="text-[11px]" style={[color: {:theme, :recording}]}>{assigns.text}</text>
     """
   end
+
+  defp hotkey_label(%{hotkey_status: :listening, hotkey: key}),
+    do: " · hold #{State.hotkey_name(key)} to talk"
+
+  defp hotkey_label(%{hotkey_status: :denied}), do: " · hold-to-talk needs Input Monitoring"
+  defp hotkey_label(_), do: ""
 
   defp recorder_label(:ready), do: "Mic ready"
   defp recorder_label(:starting), do: "Starting transcription…"
@@ -786,6 +792,12 @@ defmodule DanteJournal.View do
 
   # Palette
 
+  def handle_event("hotkey:" <> key, _event, state),
+    do: {:noreply, State.set_hotkey(state, String.to_integer(key))}
+
+  def handle_event("english:" <> english, _event, state),
+    do: {:noreply, State.set_english(state, String.to_existing_atom(english))}
+
   def handle_event("open-palette", _event, state), do: {:noreply, State.open_palette(state)}
 
   def handle_event("palette-open", %{value: open}, state),
@@ -855,6 +867,39 @@ defmodule DanteJournal.View do
 
   def handle_info({:recorder, {:error, message}}, state),
     do: {:noreply, %{state | recording: nil, notice: message}}
+
+  def handle_info({:recorder, {:hotkey, {:listening, key}}}, state),
+    do: {:noreply, %{state | hotkey_status: :listening, hotkey: key}}
+
+  def handle_info({:recorder, {:hotkey, :denied}}, state) do
+    {:noreply,
+     %{
+       state
+       | hotkey_status: :denied,
+         notice:
+           "Hold-to-talk needs Input Monitoring: System Settings → Privacy & Security → Input Monitoring, then relaunch."
+     }}
+  end
+
+  # Press starts; release stops if it was held, while a quick tap leaves the
+  # dictation running so the key also works as a toggle.
+  def handle_info({:recorder, {:hotkey, :down}}, %{recording: nil} = state) do
+    {:noreply, state} = handle_event("toggle-recording", %{}, state)
+    {:noreply, %{state | hotkey_down_at: System.monotonic_time(:millisecond)}}
+  end
+
+  def handle_info({:recorder, {:hotkey, :down}}, state),
+    do: handle_event("toggle-recording", %{}, state)
+
+  def handle_info({:recorder, {:hotkey, :up}}, %{recording: %{}, hotkey_down_at: at} = state)
+      when is_integer(at) do
+    if System.monotonic_time(:millisecond) - at >= 400,
+      do: handle_event("toggle-recording", %{}, %{state | hotkey_down_at: nil}),
+      else: {:noreply, %{state | hotkey_down_at: nil}}
+  end
+
+  def handle_info({:recorder, {:hotkey, :up}}, state),
+    do: {:noreply, %{state | hotkey_down_at: nil}}
 
   def handle_info({:player, {:playing, id}}, state), do: {:noreply, %{state | playing: id}}
   def handle_info({:player, :stopped}, state), do: {:noreply, %{state | playing: nil}}

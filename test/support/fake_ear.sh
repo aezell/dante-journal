@@ -23,6 +23,13 @@ while IFS= read -r line; do
     *'"file"'*)
       echo '{"event":"transcript","text":"Why does Virgil appear so suddenly?","path":"/tmp/in.aiff"}'
       ;;
+    *'"hotkey"'*'"key":0'*) ;;
+    *'"hotkey"'*'"key":99'*) echo '{"event":"hotkey","status":"denied"}' ;;
+    *'"hotkey"'*)
+      echo '{"event":"hotkey","status":"listening","key":61}'
+      echo '{"event":"hotkey","state":"down"}'
+      echo '{"event":"hotkey","state":"up"}'
+      ;;
     *'"quit"'*) exit 0 ;;
     *'"crash"'*) exit 7 ;;
   esac

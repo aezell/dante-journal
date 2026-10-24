@@ -252,6 +252,36 @@ defmodule DanteJournal.ViewTest do
     assert %{palette: false, italian: true} = assigns(runtime)
   end
 
+  test "the hold-to-talk key starts a dictation and a held release stops it", %{notes: notes} do
+    runtime =
+      start_runtime!(DanteJournal.Desktop, args: State.initial(notes: notes, recorder: self()))
+
+    send_view(runtime, {:recorder, :ready})
+    send_view(runtime, {:recorder, {:hotkey, {:listening, 61}}})
+    assert %{hotkey_status: :listening} = assigns(runtime)
+    assert payload(runtime) =~ "hold right ⌥ to talk"
+
+    send_view(runtime, {:recorder, {:hotkey, :down}})
+    assert_receive {:"$gen_cast", {:start_recording, _}}
+    send_view(runtime, {:recorder, :started})
+    # A quick tap keeps recording…
+    send_view(runtime, {:recorder, {:hotkey, :up}})
+    refute_receive {:"$gen_cast", :stop_recording}
+    assert %{recording: %{}} = assigns(runtime)
+    # …and a second press stops it, as does a held release.
+    send_view(runtime, {:recorder, {:hotkey, :down}})
+    assert_receive {:"$gen_cast", :stop_recording}
+
+    send_view(runtime, {:recorder, {:hotkey, :denied}})
+
+    assert %{hotkey_status: :denied, notice: "Hold-to-talk needs Input Monitoring" <> _} =
+             assigns(runtime)
+
+    click(runtime, "hotkey:0")
+    assert_receive {:"$gen_cast", {:set_hotkey, nil}}
+    assert %{hotkey: 0, hotkey_status: :off} = assigns(runtime)
+  end
+
   test "theme tokens are resolved before the tree reaches a display" do
     tree = View.render(State.initial())
     refute inspect(tree, limit: :infinity) =~ ":theme"

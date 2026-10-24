@@ -1,13 +1,15 @@
 defmodule DanteJournal.Preferences do
   @moduledoc "A few remembered choices: theme, Italian column, translation, notes pane layout."
 
-  @keys ~w(theme italian english notes_scope notes_group)a
+  @keys ~w(theme italian english notes_scope notes_group hotkey)a
   @allowed %{
     theme: [:dark, :light],
     italian: [true, false],
     english: [:mandelbaum, :longfellow],
     notes_scope: [:canto, :cantica, :all],
-    notes_group: [:canto, :type, :day]
+    notes_group: [:canto, :type, :day],
+    # Key codes the helper can watch: right ⌥, right ⌘, right ⌃, fn; 0 is off.
+    hotkey: [0, 61, 54, 62, 63]
   }
 
   def path,
@@ -54,6 +56,8 @@ defmodule DanteJournal.Preferences do
   defp decode(key, value) when is_binary(value),
     do: Enum.find(@allowed[key], &(Atom.to_string(&1) == value))
 
-  defp decode(key, value) when is_boolean(value), do: if(value in @allowed[key], do: value)
+  defp decode(key, value) when is_boolean(value) or is_integer(value),
+    do: if(value in @allowed[key], do: value)
+
   defp decode(_key, _value), do: nil
 end
