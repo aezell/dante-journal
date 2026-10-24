@@ -244,7 +244,20 @@ Carried to Phase 3: editing a note, playback, typed notes, ⌘K palette.
 Done when: tap, speak "Canto 2, stanza 12, …", confirm, and the dot shows
 on Inferno 2 tercet 12 with the text in the notes pane.
 
-### Phase 3 — browse, edit, export (1–2 days)
+### Phase 3 — browse, edit, export (done 2026-10-24)
+Notes pane with scope (canto / cantica / everything), type filter chips,
+⌘F search over text, anchor label and type, grouping by canto, type or
+day; one note card (`Form`) for dictations, typed notes (⌘N) and edits,
+with a native `text_surface` when the backend is present and a single-line
+input otherwise (tests); re-anchoring by buttons or by typing "Purg. 9.70"
+or "canto 9 stanza 24" into the card, through the same parser; clip
+playback with `afplay` via a `Player` worker; Markdown and plain-text
+export of the shown notes with the anchored lines quoted, saved under
+~/Documents/Dante Journal and revealed in Finder, plus Copy MD to the
+clipboard; ⌘K palette for "inf 5" / "purg 9.70" and commands; a
+preferences file for theme, Italian, scope and grouping. 31 tests; live
+checks of the surface, edit flow, playback and palette passed.
+Deferred: PDF export, tags.
 - Notes pane: scope, type filters, search, grouping, sort.
 - Edit text and type in place (`text_surface`), re-anchor, delete with
   confirm, play clip (`afplay` via the helper or `System.cmd`).

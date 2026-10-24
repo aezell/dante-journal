@@ -91,7 +91,7 @@ defmodule DanteJournal.Anchor do
 
   # -- Grammar -----------------------------------------------------------------
 
-  @cantica_words "inferno|hell|purgatorio|purgatory|paradiso|paradise|heaven"
+  @cantica_words "inferno|inf\\.?|hell|purgatorio|purg\\.?|purgatory|paradiso|par\\.?|paradise|heaven"
   @unit_words "stanza|stanzas|tercet|tercets|terzina|terzine|strophe"
   @line_words "lines|line|verses|verse|ll\\.|l\\."
 
@@ -99,7 +99,7 @@ defmodule DanteJournal.Anchor do
     ~r/
       ^[\s,.:;—-]*(?:in\s+|at\s+|on\s+)?
       (?:(?<cantica>#{@cantica_words})\b[\s,.:]*)?
-      (?:canto\s+(?<canto>[0-9]+|[ivxl]+)\b[\s,.:]*)?
+      (?:(?:canto\s+|(?<=\b(?:inferno|inf|hell|purgatorio|purg|purgatory|paradiso|par|paradise|heaven)[.\s,:]{1,3}))(?<canto>[0-9]+|[ivxl]+)(?=[.\s,:]|$)(?:\.(?<from2>[0-9]+)(?:[–-](?<to2>[0-9]+))?)?\b[\s,.:]*)?
       (?:
         (?:(?:#{@unit_words})\s+(?<stanza>[0-9]+)\b)
         |
@@ -113,14 +113,19 @@ defmodule DanteJournal.Anchor do
     if n in 1..Tercet.count(line_count), do: Tercet.range(n, line_count), else: nil
   end
 
-  defp lines_from(%{"from" => from} = captures, line_count) when from not in [nil, ""] do
-    from = String.to_integer(from)
-    to = if captures["to"] in [nil, ""], do: from, else: String.to_integer(captures["to"])
+  defp lines_from(%{"from" => from} = captures, line_count) when from not in [nil, ""],
+    do: line_range(from, captures["to"], line_count)
 
-    if from in 1..line_count and to in from..line_count, do: {from, to}, else: nil
-  end
+  defp lines_from(%{"from2" => from} = captures, line_count) when from not in [nil, ""],
+    do: line_range(from, captures["to2"], line_count)
 
   defp lines_from(_captures, _line_count), do: nil
+
+  defp line_range(from, to, line_count) do
+    from = String.to_integer(from)
+    to = if to in [nil, ""], do: from, else: String.to_integer(to)
+    if from in 1..line_count and to in from..line_count//1, do: {from, to}, else: nil
+  end
 
   # The selected tercet only applies when the note stays in the reader's canto.
   defp selected_lines(%{cantica: c, canto: n, tercet: tercet}, c, n, line_count)

@@ -14,10 +14,10 @@ defmodule DanteJournal.Tercet do
 
   @doc "The cantica an English or Italian spoken name refers to, if any."
   def cantica_from_word(word) when is_binary(word) do
-    case String.downcase(word) do
-      w when w in ["inferno", "hell"] -> :inferno
-      w when w in ["purgatorio", "purgatory"] -> :purgatorio
-      w when w in ["paradiso", "paradise", "heaven"] -> :paradiso
+    case word |> String.downcase() |> String.trim_trailing(".") do
+      w when w in ["inferno", "inf", "hell"] -> :inferno
+      w when w in ["purgatorio", "purg", "purgatory"] -> :purgatorio
+      w when w in ["paradiso", "par", "paradise", "heaven"] -> :paradiso
       _ -> nil
     end
   end

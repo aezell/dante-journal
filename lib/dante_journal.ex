@@ -8,12 +8,19 @@ defmodule DanteJournal do
   def start(opts \\ []) do
     notes_dir = Keyword.get(opts, :notes_dir, DanteJournal.Notes.default_dir())
 
+    opts =
+      DanteJournal.Preferences.restore(
+        opts,
+        opts[:preferences_path] || DanteJournal.Preferences.path()
+      )
+
     # The servers don't exist yet, so the window starts without notes and is
     # told to read them once everything is up.
     state = %{
       DanteJournal.State.initial(opts)
       | notes: DanteJournal.Notes,
-        recorder: DanteJournal.Recorder
+        recorder: DanteJournal.Recorder,
+        player: DanteJournal.Player
     }
 
     children = [
@@ -22,7 +29,9 @@ defmodule DanteJournal do
        name: DanteJournal.Runtime,
        args: state,
        display_opts: [name: DanteJournal.Display, theme: state.theme]},
-      {DanteJournal.Recorder, name: DanteJournal.Recorder, sink: {:runtime, DanteJournal.Runtime}}
+      {DanteJournal.Recorder,
+       name: DanteJournal.Recorder, sink: {:runtime, DanteJournal.Runtime}},
+      {DanteJournal.Player, name: DanteJournal.Player, sink: {:runtime, DanteJournal.Runtime}}
     ]
 
     with {:ok, supervisor} <- Supervisor.start_link(children, strategy: :rest_for_one) do

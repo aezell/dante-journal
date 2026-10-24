@@ -21,7 +21,10 @@ mix dante                     # or: mix dante --light
 | Shortcut | Action |
 | --- | --- |
 | ⌘⇧D | Start a dictation; press again to stop (it also stops after a pause) |
-| ⌘S | Save the note in the confirm card |
+| ⌘N | Type a note, anchored to the selected tercet or the open canto |
+| ⌘S | Save the note in the card |
+| ⌘K | Go to a canto ("inf 5", "purg 9.70") or run a command |
+| ⌘F | Search notes |
 | ⌘I | Toggle the Italian (Petrocchi) column |
 | ⌘⇧N / ⌘⇧P | Next / previous canto |
 | ⌘⇧L | Toggle dark / light |
@@ -31,8 +34,16 @@ leopard…". The anchor is parsed from what you said; without one, the note
 attaches to the tercet you clicked, or to the open canto. A confirm card
 lets you fix the anchor and the note type before saving.
 
+The notes pane shows this canto, this cantica or everything, filtered by
+type and search, grouped by canto, type or day. Each note can be edited,
+re-anchored (by typing a place such as "Purg. 9.70" or "canto 9 stanza
+24"), played back, or deleted. **Save MD** and **Save TXT** write the shown
+notes, with the lines they point at quoted, to `~/Documents/Dante Journal`;
+**Copy MD** puts the same Markdown on the clipboard.
+
 Notes live as one JSON file each, with their audio clips, under
-`~/Library/Application Support/Dante Journal/notes`.
+`~/Library/Application Support/Dante Journal/notes`. Preferences (theme,
+Italian column, notes layout) are remembered in the user config folder.
 
 ## The transcription helper
 

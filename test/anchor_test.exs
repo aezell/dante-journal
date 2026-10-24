@@ -68,3 +68,30 @@ defmodule DanteJournal.AnchorTest do
     assert Anchor.number_words_to_digits("one hundred forty five") == "145"
   end
 end
+
+defmodule DanteJournal.AnchorCompactTest do
+  use ExUnit.Case, async: true
+  alias DanteJournal.Anchor
+
+  @here %{cantica: :inferno, canto: 1, tercet: nil}
+
+  test "abbreviated and compact forms used when typing an anchor" do
+    {anchor, _, :spoken} = Anchor.parse("Purg. 9.70–72", @here)
+    assert anchor == %Anchor{cantica: :purgatorio, canto: 9, from_line: 70, to_line: 72}
+
+    {anchor, _, :spoken} = Anchor.parse("inf 5", @here)
+    assert anchor == %Anchor{cantica: :inferno, canto: 5, from_line: nil, to_line: nil}
+
+    {anchor, _, :spoken} = Anchor.parse("par 33.145", @here)
+    assert anchor == %Anchor{cantica: :paradiso, canto: 33, from_line: 145, to_line: 145}
+
+    {anchor, _, :spoken} = Anchor.parse("canto 7 stanza 2", @here)
+    assert anchor == %Anchor{cantica: :inferno, canto: 7, from_line: 4, to_line: 6}
+
+    # A bare number after "stanza" is not a canto.
+    {anchor, _, :spoken} = Anchor.parse("stanza 12 is odd", @here)
+    assert anchor == %Anchor{cantica: :inferno, canto: 1, from_line: 34, to_line: 36}
+
+    assert {_, "", :position} = Anchor.parse("12 angry men", @here)
+  end
+end
