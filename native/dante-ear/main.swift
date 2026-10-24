@@ -174,10 +174,12 @@ actor Ear {
         let text = try await closeAnalyzer()
         let seconds = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         clipFile = nil
-        if let clipPath, let gain = normalizeClip(at: clipPath) {
-            log("clip normalised, gain \(String(format: "%.1f", gain))x")
+        var ms = Int(seconds * 1000)
+        if let clipPath, let result = normalizeClip(at: clipPath) {
+            log("clip normalised, gain \(String(format: "%.1f", result.gain))x, \(String(format: "%.1f", result.seconds)) s kept of \(String(format: "%.1f", seconds))")
+            ms = Int(result.seconds * 1000)
         }
-        emit(["event": "stopped", "text": text, "clip": clipPath ?? "", "ms": Int(seconds * 1000)])
+        emit(["event": "stopped", "text": text, "clip": clipPath ?? "", "ms": ms])
         clipPath = nil
         startedAt = nil
     }
@@ -422,28 +424,60 @@ final class HotkeyMonitor {
 // MARK: - Clip level
 
 /// Microphone input often lands around -50 dBFS, inaudible on playback though
-/// fine for transcription. Rewrites a clip peak-normalised to -1 dBFS as
-/// 16-bit PCM (a quarter the size). Returns the gain applied, or nil if the
-/// file was left alone.
-func normalizeClip(at path: String) -> Float? {
+/// fine for transcription, and the pause that ends a dictation leaves seconds
+/// of silence on the tail. Rewrites a clip peak-normalised to -1 dBFS with the
+/// silence trimmed from both ends (a short margin kept), as 16-bit PCM.
+/// Returns the gain applied and the new duration, or nil if the file was left alone.
+func normalizeClip(at path: String) -> (gain: Float, seconds: Double)? {
     let url = URL(fileURLWithPath: path)
     guard let file = try? AVAudioFile(forReading: url), file.length > 0 else { return nil }
     let format = file.processingFormat
     guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)),
           (try? file.read(into: buffer)) != nil, let channels = buffer.floatChannelData else { return nil }
     let frames = Int(buffer.frameLength)
+    let channelCount = Int(format.channelCount)
     var peak: Float = 0
-    for c in 0..<Int(format.channelCount) {
+    for c in 0..<channelCount {
         for i in 0..<frames { peak = max(peak, abs(channels[c][i])) }
     }
     guard peak > 0 else { return nil }
+
+    // Loudness per 50 ms window; the quietest fifth of the windows is the room,
+    // and speech is anything 10 dB above it (bounded by the loudest window so a
+    // clip that is all speech is never cut into).
+    let rate = Int(format.sampleRate)
+    let window = max(1, rate / 20)
+    var loudness: [Float] = []
+    var i = 0
+    while i < frames {
+        let n = min(window, frames - i)
+        var sum: Float = 0
+        for c in 0..<channelCount {
+            for j in i..<(i + n) { sum += channels[c][j] * channels[c][j] }
+        }
+        loudness.append((sum / Float(n * channelCount)).squareRoot())
+        i += n
+    }
+    let sorted = loudness.sorted()
+    let room = sorted[sorted.count / 5]
+    let loudest = sorted[sorted.count - 1]
+    let threshold = min(room * 3.16, loudest * 0.3)
+    guard let firstWindow = loudness.firstIndex(where: { $0 > threshold }),
+          let lastWindow = loudness.lastIndex(where: { $0 > threshold }) else { return nil }
+    let start = max(0, firstWindow * window - rate * 4 / 10)            // keep 0.4 s before the first sound
+    let end = min(frames, (lastWindow + 1) * window + rate * 7 / 10)   // and 0.7 s after the last
+    let count = end - start
+    guard count > 0 else { return nil }
+
     // Cap the boost so a recording of nothing doesn't become a roar.
     let gain = min(0.89 / peak, 60)
-    if gain > 1.02 {
-        for c in 0..<Int(format.channelCount) {
-            for i in 0..<frames { channels[c][i] *= gain }
-        }
+    guard let trimmed = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(count)),
+          let out = trimmed.floatChannelData else { return nil }
+    for c in 0..<channelCount {
+        for i in 0..<count { out[c][i] = channels[c][start + i] * (gain > 1.02 ? gain : 1) }
     }
+    trimmed.frameLength = AVAudioFrameCount(count)
+
     let settings: [String: Any] = [
         AVFormatIDKey: kAudioFormatLinearPCM,
         AVSampleRateKey: format.sampleRate,
@@ -454,14 +488,13 @@ func normalizeClip(at path: String) -> Float? {
     ]
     let temporary = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).tmp.wav")
     do {
-        let out = try AVAudioFile(forWriting: temporary, settings: settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved)
-        try out.write(from: buffer)
+        let writer = try AVAudioFile(forWriting: temporary, settings: settings, commonFormat: format.commonFormat, interleaved: format.isInterleaved)
+        try writer.write(from: trimmed)
     } catch {
         try? FileManager.default.removeItem(at: temporary)
         emitError("normalize: \(error.localizedDescription)")
         return nil
     }
-    // `out` closes when it goes out of scope above; replace the original.
     do {
         _ = try FileManager.default.replaceItemAt(url, withItemAt: temporary)
     } catch {
@@ -469,7 +502,7 @@ func normalizeClip(at path: String) -> Float? {
         emitError("normalize: \(error.localizedDescription)")
         return nil
     }
-    return gain
+    return (gain, Double(count) / format.sampleRate)
 }
 
 // MARK: - Clip playback
@@ -567,8 +600,8 @@ for try await line in FileHandle.standardInput.bytes.lines {
             ClipPlayer.shared.stop()
         case "normalize":
             guard let path = command["path"] as? String else { throw EarError("normalize needs a path") }
-            let gain = normalizeClip(at: path)
-            emit(["event": "normalized", "path": path, "gain": gain ?? 1])
+            let result = normalizeClip(at: path)
+            emit(["event": "normalized", "path": path, "gain": result?.gain ?? 1, "seconds": result?.seconds ?? 0])
         case "quit":
             ClipPlayer.shared.stop()
             HotkeyMonitor.shared.stop()

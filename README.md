@@ -84,6 +84,10 @@ re-anchored (by typing a place such as "Purg. 9.70" or "canto 9 stanza
 notes, with the lines they point at quoted, to `~/Documents/Dante Journal`;
 **Copy MD** puts the same Markdown on the clipboard.
 
+Clips are normalised to −1 dBFS and trimmed of leading and trailing
+silence when a dictation ends, so the pause that stops a recording doesn't
+end up in the file.
+
 Notes live as one JSON file each, with their audio clips, under
 `~/Library/Application Support/Dante Journal/notes`. Preferences (theme,
 Italian column, notes layout) are remembered in the user config folder.
