@@ -431,11 +431,15 @@ final class HotkeyMonitor {
 func normalizeClip(at path: String) -> (gain: Float, seconds: Double)? {
     let url = URL(fileURLWithPath: path)
     guard let file = try? AVAudioFile(forReading: url), file.length > 0 else { return nil }
-    let format = file.processingFormat
-    guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(file.length)),
-          (try? file.read(into: buffer)) != nil, let channels = buffer.floatChannelData else { return nil }
+    let fileFormat = file.processingFormat
+    guard let read = AVAudioPCMBuffer(pcmFormat: fileFormat, frameCapacity: AVAudioFrameCount(file.length)),
+          (try? file.read(into: read)) != nil, read.floatChannelData != nil else { return nil }
+    // A two-channel interface records the voice on one input and silence on
+    // the other, which plays back on one side only. Mix everything to mono.
+    guard let buffer = monoMix(read), let channels = buffer.floatChannelData else { return nil }
+    let format = buffer.format
     let frames = Int(buffer.frameLength)
-    let channelCount = Int(format.channelCount)
+    let channelCount = 1
     var peak: Float = 0
     for c in 0..<channelCount {
         for i in 0..<frames { peak = max(peak, abs(channels[c][i])) }
@@ -503,6 +507,24 @@ func normalizeClip(at path: String) -> (gain: Float, seconds: Double)? {
         return nil
     }
     return (gain, Double(count) / format.sampleRate)
+}
+
+/// One channel holding the average of all channels (a plain copy for mono).
+func monoMix(_ source: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
+    let frames = Int(source.frameLength)
+    let channelCount = Int(source.format.channelCount)
+    guard let data = source.floatChannelData,
+          let mono = AVAudioFormat(standardFormatWithSampleRate: source.format.sampleRate, channels: 1),
+          let out = AVAudioPCMBuffer(pcmFormat: mono, frameCapacity: AVAudioFrameCount(frames)),
+          let dest = out.floatChannelData else { return nil }
+    let scale = 1 / Float(channelCount)
+    for i in 0..<frames {
+        var sum: Float = 0
+        for c in 0..<channelCount { sum += data[c][i] }
+        dest[0][i] = sum * scale
+    }
+    out.frameLength = AVAudioFrameCount(frames)
+    return out
 }
 
 // MARK: - Clip playback
