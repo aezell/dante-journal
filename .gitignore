@@ -1,0 +1,7 @@
+/_build/
+/deps/
+/erl_crash.dump
+/dist/
+/priv/bin/
+/native/dante-ear/.build/
+.DS_Store
