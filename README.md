@@ -68,8 +68,10 @@ leopard…". The anchor is parsed from what you said; without one, the note
 attaches to the tercet you clicked, or to the open canto. A confirm card
 lets you fix the anchor and the note type before saving.
 
-The notes pane shows this canto, this cantica or everything, filtered by
-type and search, grouped by canto, type or day. Each note can be edited,
+Lines with notes carry a coloured bar in the margin. Click a note to scroll
+the poem to its lines and highlight them; click a marked tercet to scroll
+the notes pane to its note. The notes pane shows this canto, this cantica
+or everything, filtered by type and search, grouped by canto, type or day. Each note can be edited,
 re-anchored (by typing a place such as "Purg. 9.70" or "canto 9 stanza
 24"), played back, or deleted. **Save MD** and **Save TXT** write the shown
 notes, with the lines they point at quoted, to `~/Documents/Dante Journal`;

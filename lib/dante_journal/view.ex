@@ -177,7 +177,8 @@ defmodule DanteJournal.View do
 
     ~GPUI"""
     <UI.virtual_collection id={"reader-#{assigns.cantica}-#{assigns.canto}"} label={"#{Tercet.name(assigns.cantica)} canto #{assigns.canto}"}
-      overdraw={400} class="flex-1 min-h-0 w-full px-6 py-6">
+      overdraw={400} reveal={assigns.reveal_tercet && "tercet-#{assigns.reveal_tercet}"} reveal_request={assigns.reveal_request}
+      reveal_strategy="nearest" class="flex-1 min-h-0 w-full px-6 py-6">
       {Enum.map(assigns.tercets, &tercet_item(&1, Map.get(assigns.italian_lines, &1.number), Map.get(assigns.by_tercet, &1.number, []), assigns))}
     </UI.virtual_collection>
     """
@@ -202,9 +203,10 @@ defmodule DanteJournal.View do
   defp tercet_row(assigns) do
     ~GPUI"""
     <.action id={"pick-tercet-" <> Integer.to_string(assigns.tercet.number)} phx-click={assigns.event}
-      accessibility_label={"Tercet " <> Integer.to_string(assigns.tercet.number)}
-      class="flex flex-row w-full items-start gap-3 px-3 py-2 rounded-md cursor-pointer"
+      accessibility_label={"Tercet " <> Integer.to_string(assigns.tercet.number) <> if(assigns.notes == [], do: "", else: ", #{length(assigns.notes)} notes")}
+      class="relative flex flex-row w-full items-start gap-3 px-3 py-2 rounded-md cursor-pointer"
       style={[background: if(assigns.selected, do: {:theme, :surface}, else: ~RGBA"00000000")]}>
+      {note_bar(assigns.notes, assigns.selected)}
       <div class="flex flex-col w-10 shrink-0 items-end gap-1 pt-[3px]">
         <text class="text-[11px]" style={[color: if(assigns.selected, do: {:theme, :accent}, else: {:theme, :muted})]}>{if rem(assigns.tercet.number, 2) == 0 or assigns.selected or assigns.notes != [], do: Integer.to_string(assigns.tercet.from), else: ""}</text>
         {markers(assigns.notes)}
@@ -214,6 +216,18 @@ defmodule DanteJournal.View do
       </div>
       {italian_column(assigns.italian)}
     </.action>
+    """
+  end
+
+  # A bar along the row's left edge in the first note's colour: the sign that
+  # these lines have notes. Solid when the tercet is selected, dimmer otherwise.
+  defp note_bar([], _selected), do: []
+
+  defp note_bar([first | _], selected) do
+    assigns = %{color: Classifier.color(first.type), selected: selected}
+
+    ~GPUI"""
+    <div class={"absolute left-0 top-1 bottom-1 rounded-full " <> if(assigns.selected, do: "w-[4px]", else: "w-[3px] opacity-70")} style={[background: {:theme, assigns.color}]} />
     """
   end
 
@@ -408,13 +422,58 @@ defmodule DanteJournal.View do
           {if assigns.filtered, do: small_button("notes-clear-filters", "Clear"), else: []}
         </div>
       </div>
-      <scroll id="notes-list" class="flex-1 min-h-0 w-full">
-        <div class="flex flex-col w-full px-3 py-3 gap-2">
-          {if assigns.groups == [], do: empty_notes(assigns), else: Enum.map(assigns.groups, &note_group(&1, assigns))}
-        </div>
-      </scroll>
+      {notes_list(assigns)}
     </div>
     """
+  end
+
+  defp notes_list(%{groups: []} = assigns) do
+    ~GPUI"""
+    <div class="flex flex-col w-full px-3 py-3">{empty_notes(assigns)}</div>
+    """
+  end
+
+  defp notes_list(assigns) do
+    items =
+      Enum.flat_map(assigns.groups, fn {key, heading, notes} ->
+        [heading_item(key, heading, length(notes)) | Enum.map(notes, &note_item(&1, assigns))]
+      end)
+
+    ids = Enum.map(items, & &1.attrs[:id])
+    focused = assigns.focused_note && "note-" <> assigns.focused_note
+    assigns = Map.merge(assigns, %{items: items, reveal: if(focused in ids, do: focused)})
+
+    ~GPUI"""
+    <UI.virtual_collection id="notes-list" label="Notes" overdraw={300}
+      reveal={assigns.reveal} reveal_request={assigns.note_reveal_request} reveal_strategy="nearest"
+      class="flex-1 min-h-0 w-full px-3 py-3">
+      {assigns.items}
+    </UI.virtual_collection>
+    """
+  end
+
+  defp heading_item(key, heading, count) do
+    assigns = %{heading: heading, count: count}
+
+    UI.virtual_item(%{
+      id: "group-" <> key,
+      children: [
+        ~GPUI"""
+        <div class="flex flex-row items-center gap-2 px-1 pt-2 pb-1">
+          {UIKit.heading(assigns.heading)}
+          <text class="text-[10px]" style={[color: {:theme, :muted}]}>{assigns.count}</text>
+        </div>
+        """
+      ]
+    })
+  end
+
+  defp note_item(%Note{} = note, state) do
+    UI.virtual_item(%{
+      id: "note-" <> note.id,
+      revision: if(state.pending_delete == note.id, do: 1, else: 0),
+      children: [note_card(note, state)]
+    })
   end
 
   defp scope_chip(scope, current) do
@@ -467,26 +526,10 @@ defmodule DanteJournal.View do
     """
   end
 
-  defp note_group({key, heading, notes}, state) do
-    assigns = %{key: key, heading: heading, notes: notes, state: state}
-
-    ~GPUI"""
-    <div id={"group-" <> assigns.key} class="flex flex-col w-full gap-2 pt-1">
-      <div class="flex flex-row items-center gap-2 px-1">
-        {UIKit.heading(assigns.heading)}
-        <text class="text-[10px]" style={[color: {:theme, :muted}]}>{length(assigns.notes)}</text>
-      </div>
-      {Enum.map(assigns.notes, &note_card(&1, assigns.state))}
-    </div>
-    """
-  end
-
   defp note_card(%Note{} = note, state) do
     assigns = %{
       note: note,
-      selected:
-        state.tercet != nil and note.anchor.cantica == state.cantica and
-          note.anchor.canto == state.canto and Anchor.tercet_number(note.anchor) == state.tercet,
+      selected: state.focused_note == note.id,
       deleting: state.pending_delete == note.id,
       playing: state.playing == note.id,
       body: Anchor.strip_phrase(note.text, note.anchor_phrase),
@@ -496,18 +539,21 @@ defmodule DanteJournal.View do
     }
 
     ~GPUI"""
-    <div id={"note-" <> assigns.note.id} class="relative flex flex-col w-full rounded-md px-3 py-2 gap-2"
+    <div id={"card-" <> assigns.note.id} class="relative flex flex-col w-full rounded-md px-3 py-2 gap-2 mb-2"
       style={[background: if(assigns.selected, do: {:theme, :surface}, else: {:theme, :canvas})]}>
+      {if assigns.selected, do: focus_bar(), else: []}
       <div class="flex flex-row items-center gap-2">
         <div class="w-[7px] h-[7px] rounded-full" style={[background: {:theme, Classifier.color(assigns.note.type)}]} />
         <text class="text-[11px] font-semibold" style={[color: {:theme, Classifier.color(assigns.note.type)}]}>{Classifier.label(assigns.note.type)}</text>
-        <.action id={"jump-" <> assigns.note.id} phx-click={"goto:" <> State.encode(assigns.note.anchor)} accessibility_label="Show in the poem" class="cursor-pointer">
+        <.action id={"jump-" <> assigns.note.id} phx-click={"note-focus:" <> assigns.note.id} accessibility_label="Show in the poem" class="cursor-pointer">
           <text class="text-[11px]" style={[color: {:theme, :accent}]}>{Anchor.label(assigns.note.anchor)}</text>
         </.action>
         <div class="flex-1" />
         <text class="text-[10px]" style={[color: {:theme, :muted}]}>{assigns.time}</text>
       </div>
-      <text class="text-[13px] leading-[19px]">{assigns.body}</text>
+      <.action id={"focus-" <> assigns.note.id} phx-click={"note-focus:" <> assigns.note.id} accessibility_label="Show these lines" class="cursor-pointer w-full">
+        <text class="text-[13px] leading-[19px]">{assigns.body}</text>
+      </.action>
       <div class="flex flex-row items-center gap-1">
         {if assigns.note.audio, do: play_button(assigns.note.id, assigns.playing), else: []}
         <div class="flex-1" />
@@ -518,6 +564,12 @@ defmodule DanteJournal.View do
         end}
       </div>
     </div>
+    """
+  end
+
+  defp focus_bar do
+    ~GPUI"""
+    <div class="absolute left-0 top-1 bottom-1 w-[3px] rounded-full" style={[background: {:theme, :accent}]} />
     """
   end
 
@@ -634,7 +686,10 @@ defmodule DanteJournal.View do
     do: {:noreply, State.go_to(state, State.decode(encoded))}
 
   def handle_event("tercet:" <> n, _event, state),
-    do: {:noreply, State.select_tercet(state, String.to_integer(n))}
+    do: {:noreply, State.pick_tercet(state, String.to_integer(n))}
+
+  def handle_event("note-focus:" <> id, _event, state),
+    do: {:noreply, State.focus_note(state, id)}
 
   def handle_event("next-canto", _event, state), do: {:noreply, State.next_canto(state)}
   def handle_event("previous-canto", _event, state), do: {:noreply, State.previous_canto(state)}

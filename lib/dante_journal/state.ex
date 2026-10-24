@@ -15,6 +15,11 @@ defmodule DanteJournal.State do
       canto: 1,
       # The tercet dictation falls back to when no anchor is spoken.
       tercet: nil,
+      # Scroll requests: the reader reveals a tercet, the pane reveals a note.
+      reveal_tercet: nil,
+      reveal_request: 0,
+      focused_note: nil,
+      note_reveal_request: 0,
       # Servers; nil when running without them (some tests).
       notes: Keyword.get(opts, :notes),
       recorder: Keyword.get(opts, :recorder),
@@ -60,8 +65,40 @@ defmodule DanteJournal.State do
     end
   end
 
-  def go_to(state, %Anchor{} = anchor),
-    do: select(state, anchor.cantica, anchor.canto, Anchor.tercet_number(anchor))
+  @doc "Opens the anchor's canto, selects its tercet and scrolls the reader to it."
+  def go_to(state, %Anchor{} = anchor) do
+    tercet = Anchor.tercet_number(anchor)
+
+    state
+    |> select(anchor.cantica, anchor.canto, tercet)
+    |> reveal_tercet(tercet)
+  end
+
+  def reveal_tercet(state, nil), do: state
+
+  def reveal_tercet(state, n),
+    do: %{state | reveal_tercet: n, reveal_request: state.reveal_request + 1}
+
+  @doc "Clicking a note: show its place in the poem and mark the note."
+  def focus_note(state, id) do
+    case Enum.find(state.all_notes, &(&1.id == id)) do
+      nil -> state
+      note -> %{go_to(state, note.anchor) | focused_note: id}
+    end
+  end
+
+  @doc "Clicking a tercet: select it and bring its first note into view."
+  def pick_tercet(state, n) do
+    state = select_tercet(state, n)
+
+    case if(state.tercet, do: Map.get(notes_by_tercet(state), n, []), else: []) do
+      [] -> %{state | focused_note: nil}
+      [first | _] -> reveal_note(state, first.id)
+    end
+  end
+
+  def reveal_note(state, id),
+    do: %{state | focused_note: id, note_reveal_request: state.note_reveal_request + 1}
 
   def next_canto(%{cantica: cantica, canto: canto} = state) do
     cond do

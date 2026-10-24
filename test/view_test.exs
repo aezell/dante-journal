@@ -232,6 +232,33 @@ defmodule DanteJournal.ViewTest do
     assert GPUI.Tree.find!(View.render(assigns(runtime)), id: "notes-shown")
   end
 
+  test "notes and lines point at each other: click to scroll and highlight", %{notes: notes} do
+    seed(notes, "a", :inferno, 1, 34, :question, "Why a leopard?")
+    seed(notes, "b", :purgatorio, 9, 70, :insight, "Three steps")
+    runtime = start_runtime!(DanteJournal.Desktop, args: State.initial(notes: notes))
+
+    click(runtime, "scope:all")
+    click(runtime, "note-focus:b")
+    state = assigns(runtime)
+    assert {state.cantica, state.canto, state.tercet} == {:purgatorio, 9, 24}
+    assert {state.reveal_tercet, state.reveal_request, state.focused_note} == {24, 1, "b"}
+    tree = View.render(state)
+    assert GPUI.Tree.find!(tree, id: "reader-purgatorio-9").attrs[:reveal] == "tercet-24"
+    assert GPUI.Tree.find!(tree, id: "card-b")
+
+    click(runtime, "select:inferno:1")
+    click(runtime, "tercet:12")
+    state = assigns(runtime)
+    assert {state.tercet, state.focused_note, state.note_reveal_request} == {12, "a", 1}
+    assert GPUI.Tree.find!(View.render(state), id: "notes-list").attrs[:reveal] == "note-a"
+
+    click(runtime, "tercet:1")
+    assert %{tercet: 1, focused_note: nil} = assigns(runtime)
+    payload = payload(runtime)
+    assert payload =~ "Tercet 12, 1 notes"
+    refute payload =~ "Tercet 1, "
+  end
+
   test "the palette goes to a place or runs a command", %{notes: notes} do
     runtime =
       start_runtime!(DanteJournal.Desktop, args: State.initial(notes: notes, recorder: self()))
