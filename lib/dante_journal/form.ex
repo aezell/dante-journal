@@ -157,6 +157,17 @@ defmodule DanteJournal.Form do
     end
   end
 
+  @doc ~S|Drops spoken fillers ("uh", "um") from a dictation; typed text is left alone.|
+  def tidy(text, :dictation) do
+    text
+    |> String.replace(~r/(^|[\s(])(?:uh|um|er|erm|hmm)[,.]?(?=\s|$)/iu, "\\1")
+    |> String.replace(~r/[ \t]{2,}/, " ")
+    |> String.replace(~r/\s+([,.;:?!])/, "\\1")
+    |> String.replace(~r/([,.;:?!]),/, "\\1")
+  end
+
+  def tidy(text, _source), do: text
+
   @doc "The note this form describes, ready to save."
   def to_note(%__MODULE__{} = form, now \\ DateTime.utc_now()) do
     form = sync(form)
@@ -173,7 +184,7 @@ defmodule DanteJournal.Form do
       id: form.id,
       anchor: form.anchor,
       type: form.type,
-      text: String.trim(form.text),
+      text: form.text |> tidy(form.source) |> String.trim(),
       anchor_phrase: form.phrase,
       title: form.title,
       tags: form.tags,

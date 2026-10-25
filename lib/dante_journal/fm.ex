@@ -51,7 +51,8 @@ defmodule DanteJournal.FM do
   def classify(text) when is_binary(text) do
     instructions =
       "You classify notes a reader dictates while reading Dante's Divine Comedy. " <>
-        "A place reference at the start of a note (canto, stanza, line) is not part of its content."
+        "A place reference at the start of a note (canto, stanza, line) is not part of its content. " <>
+        "A note that asks, wonders or says the reader is curious about something is a question, even without a question mark."
 
     with {:ok, map} <-
            respond("Note: '#{String.trim(text)}'",

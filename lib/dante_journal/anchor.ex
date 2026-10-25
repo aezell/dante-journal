@@ -107,7 +107,7 @@ defmodule DanteJournal.Anchor do
       |> String.split(~r/[\s,.:;—-]+/u, trim: true)
       |> Enum.map(fn
         "canto" ->
-          "(?:en|in|un)?canto"
+          "(?:(?:en|in|un)?canto|kento|kanto|canteau|cantor)"
 
         "in" ->
           "(?:in|en|and)?"
@@ -126,7 +126,7 @@ defmodule DanteJournal.Anchor do
   defp as_heard(text) do
     text
     |> String.replace(~r/\b(?:en|in|un)canto\b/u, "in canto")
-    |> String.replace(~r/\bcantos\b/u, "canto")
+    |> String.replace(~r/\b(?:kento|kanto|canteau|cantor|canto's|cantos)\b/u, "canto")
   end
 
   # -- Grammar -----------------------------------------------------------------
