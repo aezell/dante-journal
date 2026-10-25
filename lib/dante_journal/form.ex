@@ -24,7 +24,14 @@ defmodule DanteJournal.Form do
             clip: nil,
             ms: 0,
             source: :dictation,
-            existing: nil
+            existing: nil,
+            title: nil,
+            tags: [],
+            # What the model is still working on for this form.
+            pending: MapSet.new(),
+            # Once the reader sets these by hand, the model's suggestion is ignored.
+            type_touched: false,
+            anchor_touched: false
 
   @doc "A form for a finished dictation."
   def from_dictation(text, anchor, phrase, how, extra) do
@@ -59,7 +66,11 @@ defmodule DanteJournal.Form do
       how: :chosen,
       clip: nil,
       source: note.source,
-      existing: note
+      existing: note,
+      title: note.title,
+      tags: note.tags,
+      type_touched: true,
+      anchor_touched: true
     }
     |> put_text(note.text)
     |> focus()
@@ -96,10 +107,42 @@ defmodule DanteJournal.Form do
 
   def focus(form), do: %{form | focus: form.focus + 1}
 
-  def set_type(form, type), do: %{form | type: type}
+  def set_type(form, type), do: %{form | type: type, type_touched: true}
 
   def set_anchor(form, %Anchor{} = anchor, how),
-    do: %{form | anchor: anchor, how: how, anchor_error: nil}
+    do: %{form | anchor: anchor, how: how, anchor_error: nil, anchor_touched: true}
+
+  @doc "Marks model work as outstanding or done."
+  def expect(form, job), do: %{form | pending: MapSet.put(form.pending, job)}
+  def settle(form, job), do: %{form | pending: MapSet.delete(form.pending, job)}
+
+  @doc "Applies the model's classification unless the reader already chose a type."
+  def suggest_type(%__MODULE__{} = form, %{type: type, title: title, tags: tags}) do
+    form = settle(form, :classify)
+
+    form = %{
+      form
+      | title: if(title == "", do: form.title, else: title),
+        tags: if(tags == [], do: form.tags, else: tags)
+    }
+
+    if form.type_touched, do: form, else: %{form | type: type}
+  end
+
+  @doc "Applies the model's reading of the place unless the reader moved the anchor or lines are already known."
+  def suggest_anchor(%__MODULE__{} = form, anchor) do
+    form = settle(form, :locate)
+
+    case anchor do
+      %Anchor{from_line: from} when is_integer(from) ->
+        if form.anchor_touched or form.anchor.from_line != nil,
+          do: form,
+          else: %{form | anchor: anchor, how: :model}
+
+      _ ->
+        form
+    end
+  end
 
   @doc "Applies a typed anchor such as “canto 9 stanza 24” or “Purg. 9.70–72”."
   def apply_anchor_input(form, "", _current), do: %{form | anchor_error: nil}
@@ -132,9 +175,10 @@ defmodule DanteJournal.Form do
       type: form.type,
       text: String.trim(form.text),
       anchor_phrase: form.phrase,
+      title: form.title,
+      tags: form.tags,
       audio: audio,
       source: form.source,
-      tags: if(form.existing, do: form.existing.tags, else: []),
       recorded_at: if(form.existing, do: form.existing.recorded_at, else: now),
       edited_at: if(form.existing, do: now)
     }

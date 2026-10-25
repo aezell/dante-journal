@@ -303,7 +303,17 @@ target would lower it).
   ad hoc signing, portable-library check, logs to `~/Library/Logs`.
 Done when: the .app in /Applications works end to end with Mandelbaum.
 
-### Phase 5 — the local LLM (exploratory)
+### Phase 5 — the local LLM (done 2026-10-25)
+`DanteJournal.FM` wraps `fm respond --no-stream -g` with instructions and a
+structured-output schema (Apple's format: `title`, `properties`, `x-order`,
+`required`, `additionalProperties: false`; `enum` and arrays work). Three
+uses, all off the view's process through a `Task.Supervisor` and delivered
+as `{:fm, …}` messages: classification (type, title, tags; 1.4 s), place
+reading for loosely phrased anchors (only when the parser found no lines),
+and ask-my-notes with term-based retrieval over the notes shown, capped at
+12 notes with their lines (under 1 s for a handful of notes). The reader's
+own choices on the card always win over the model's suggestions. A fake `fm`
+script drives the tests. 54 tests.
 - After `sudo fm license`: `Classifier` asks `fm respond --schema` for type,
   title and tags; falls back to heuristics when `fm` is unavailable.
 - `Ask`: a question box in the notes pane; retrieval over notes and

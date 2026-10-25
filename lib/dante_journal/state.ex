@@ -1,6 +1,6 @@
 defmodule DanteJournal.State do
   @moduledoc "The workspace state map and its pure transitions."
-  alias DanteJournal.{Anchor, Classifier, Form, Keys, Notes, Preferences, Tercet, Text}
+  alias DanteJournal.{Anchor, Classifier, Form, Keys, Model, Notes, Preferences, Tercet, Text}
 
   @scopes [:canto, :cantica, :all]
   @groups [:canto, :type, :day]
@@ -48,6 +48,11 @@ defmodule DanteJournal.State do
       palette_index: 0,
       palette_focus: 0,
       notice: nil,
+      # The on-device model: whether to use it, and where its results go.
+      fm: Keyword.get(opts, :fm, false),
+      fm_status: :checking,
+      model_sink: Keyword.get(opts, :model_sink, {:runtime, DanteJournal.Runtime}),
+      ask: %{question: "", pending: nil, answer: nil, cited: [], focus: 0},
       status: "Inferno · Canto I"
     }
     |> refresh_notes()
@@ -329,15 +334,185 @@ defmodule DanteJournal.State do
       %{state | recording: nil, notice: "Nothing was heard."}
     else
       {anchor, phrase, how} = Anchor.parse(text, state)
-
-      %{
-        state
-        | recording: nil,
-          form: Form.from_dictation(text, anchor, phrase, how, extra),
-          notice: nil
-      }
+      form = Form.from_dictation(text, anchor, phrase, how, extra)
+      %{state | recording: nil, form: consult_model(state, form), notice: nil}
     end
   end
+
+  # Asks the model about a fresh dictation: always for the type, title and
+  # tags; for the place only when the parser found no lines.
+  defp consult_model(%{fm: true} = state, form) do
+    Model.classify_form(state.model_sink, form.id, form.text)
+    form = Form.expect(form, :classify)
+
+    if form.anchor.from_line == nil do
+      Model.locate_form(state.model_sink, form.id, form.text, state)
+      Form.expect(form, :locate)
+    else
+      form
+    end
+  end
+
+  defp consult_model(_state, form), do: form
+
+  def model_event(state, {:available, available}),
+    do: %{state | fm: available, fm_status: if(available, do: :ready, else: :unavailable)}
+
+  def model_event(%{form: %Form{id: id} = form} = state, {:classified, id, result}),
+    do: %{state | form: Form.suggest_type(form, result)}
+
+  def model_event(%{form: %Form{id: id} = form} = state, {:located, id, anchor}),
+    do: %{state | form: Form.suggest_anchor(form, anchor)}
+
+  def model_event(%{form: %Form{id: id} = form} = state, {:failed, id, job, _reason}),
+    do: %{state | form: Form.settle(form, job)}
+
+  def model_event(state, {:classified_note, id, %{title: title, tags: tags}}) do
+    case state.notes && Enum.find(state.all_notes, &(&1.id == id)) do
+      %{title: nil} = note ->
+        Notes.save(state.notes, %{
+          note
+          | title: if(title == "", do: nil, else: title),
+            tags: if(note.tags == [], do: tags, else: note.tags)
+        })
+
+        refresh_notes(state)
+
+      _ ->
+        state
+    end
+  end
+
+  def model_event(state, {:located_note, id, %Anchor{from_line: from} = anchor})
+      when is_integer(from) do
+    case state.notes && Enum.find(state.all_notes, &(&1.id == id)) do
+      %{anchor: %Anchor{from_line: nil}} = note ->
+        Notes.save(state.notes, %{note | anchor: anchor})
+        %{refresh_notes(state) | notice: "The model placed a note at #{Anchor.label(anchor)}."}
+
+      _ ->
+        state
+    end
+  end
+
+  # `cited` was fixed when the question was sent, in citation order.
+  def model_event(state, {:answer, question, text, _numbers}) do
+    if state.ask.pending == question,
+      do: %{state | ask: %{state.ask | pending: nil, answer: text}},
+      else: state
+  end
+
+  def model_event(state, {:answer_failed, question, reason}) do
+    if state.ask.pending == question,
+      do: %{
+        state
+        | ask: %{state.ask | pending: nil},
+          notice: "The model couldn't answer: #{reason}"
+      },
+      else: state
+  end
+
+  def model_event(state, _other), do: state
+
+  # -- Ask my notes ------------------------------------------------------------
+
+  @stopwords ~w(the a an and or of to in on at is are was were be been it its this that these those what which who whom why how do does did i my me we our you your about with for from as by not no there here they them their)
+
+  def set_question(state, question), do: %{state | ask: %{state.ask | question: question}}
+
+  def focus_ask(state), do: %{state | ask: %{state.ask | focus: state.ask.focus + 1}}
+
+  def close_answer(state), do: %{state | ask: %{state.ask | answer: nil, cited: []}}
+
+  @doc "Sends the question to the model with the most relevant of the shown notes."
+  def ask(state, question) do
+    question = String.trim(question)
+
+    cond do
+      question == "" ->
+        state
+
+      not state.fm ->
+        %{
+          state
+          | notice:
+              "The on-device model isn't available; run `sudo fm license` once and relaunch."
+        }
+
+      true ->
+        picked = pick_notes(visible_notes(state), question)
+
+        if picked == [] do
+          %{state | notice: "No notes to ask about in this view."}
+        else
+          Model.ask(
+            state.model_sink,
+            question,
+            picked
+            |> Enum.with_index(1)
+            |> Enum.map(fn {note, n} ->
+              {n, Anchor.label(note.anchor), Atom.to_string(note.type),
+               Anchor.strip_phrase(note.text, note.anchor_phrase),
+               anchored_lines(note, state.english)}
+            end)
+          )
+
+          %{
+            state
+            | ask: %{
+                state.ask
+                | question: question,
+                  pending: question,
+                  answer: nil,
+                  cited: Enum.map(picked, & &1.id)
+              },
+              notice: nil
+          }
+        end
+    end
+  end
+
+  # The notes most like the question first, capped so the prompt stays small.
+  defp pick_notes(notes, question) do
+    terms =
+      question
+      |> String.downcase()
+      |> String.split(~r/[^\p{L}\p{N}]+/u, trim: true)
+      |> Enum.reject(&(&1 in @stopwords or String.length(&1) < 3))
+
+    scored =
+      Enum.map(notes, fn note ->
+        hay =
+          String.downcase(
+            note.text <> " " <> Enum.join(note.tags, " ") <> " " <> to_string(note.title)
+          )
+
+        {Enum.count(terms, &String.contains?(hay, &1)), note}
+      end)
+
+    if terms == [] or Enum.all?(scored, fn {score, _} -> score == 0 end) do
+      Enum.take(notes, 12)
+    else
+      scored
+      |> Enum.filter(fn {score, _} -> score > 0 end)
+      |> Enum.sort_by(fn {score, note} -> {-score, note.id} end)
+      |> Enum.map(&elem(&1, 1))
+      |> Enum.take(12)
+    end
+  end
+
+  defp anchored_lines(%{anchor: %Anchor{from_line: nil}}, _english), do: []
+
+  defp anchored_lines(%{anchor: a}, english),
+    do:
+      Text.lines(english, a.cantica, a.canto) |> Enum.slice((a.from_line - 1)..(a.to_line - 1)//1)
+
+  @doc "Notes the last answer drew on, in citation order."
+  def cited_notes(state),
+    do:
+      state.ask.cited
+      |> Enum.map(fn id -> Enum.find(state.all_notes, &(&1.id == id)) end)
+      |> Enum.reject(&is_nil/1)
 
   @doc "Opens an empty form anchored to the selected tercet or the open canto."
   def new_typed_note(state) do
@@ -383,6 +558,9 @@ defmodule DanteJournal.State do
       true ->
         case Notes.save(state.notes, note) do
           :ok ->
+            if state.fm and note.title == nil,
+              do: Model.classify_note(state.model_sink, note.id, note.text)
+
             %{state | form: nil, notice: nil}
             |> refresh_notes()
             |> go_to(note.anchor)
@@ -419,14 +597,28 @@ defmodule DanteJournal.State do
           :ok == Notes.save(state.notes, %{note | anchor: anchor, anchor_phrase: phrase}),
           do: note.id
 
+    state = refresh_notes(state)
+    remaining = Enum.filter(state.all_notes, &(&1.anchor.from_line == nil))
+
+    if state.fm do
+      for note <- remaining,
+          do:
+            Model.locate_note(state.model_sink, note.id, note.text, %{
+              cantica: note.anchor.cantica,
+              canto: note.anchor.canto
+            })
+    end
+
     notice =
-      case length(fixed) do
-        0 -> "No whole-canto notes had a readable spoken anchor."
-        1 -> "Re-anchored 1 note to its lines."
-        n -> "Re-anchored #{n} notes to their lines."
+      case {length(fixed), length(remaining), state.fm} do
+        {0, 0, _} -> "Every note already points at lines."
+        {0, _, true} -> "Asking the model about #{length(remaining)} whole-canto notes…"
+        {0, _, false} -> "No whole-canto notes had a readable spoken anchor."
+        {1, _, _} -> "Re-anchored 1 note to its lines."
+        {n, _, _} -> "Re-anchored #{n} notes to their lines."
       end
 
-    %{refresh_notes(state) | notice: notice}
+    %{state | notice: notice}
   end
 
   def request_delete(state, id), do: %{state | pending_delete: id}
@@ -484,6 +676,7 @@ defmodule DanteJournal.State do
     {"next-canto", "Next canto", "⌘⇧N"},
     {"previous-canto", "Previous canto", "⌘⇧P"},
     {"focus-search", "Search notes", "⌘F"},
+    {"focus-ask", "Ask the model about the shown notes", ""},
     {"scope:canto", "Show notes from this canto", ""},
     {"scope:cantica", "Show notes from this cantica", ""},
     {"scope:all", "Show every note", ""},

@@ -37,6 +37,27 @@ whatever app is in front. Releasing any part of a chord ends the dictation.
 Opened from Finder the app logs to `~/Library/Logs/Dante Journal/`. The icon
 is drawn by `macos/make_icon.sh`.
 
+## The on-device model
+
+With Apple's Foundation Models command available (macOS 27; accept its terms
+once with `sudo fm license`), the app uses the local model, never the
+network, for three things:
+
+- **Reading a note.** Each dictation gets a type, a short title and tags from
+  the model while the card is open; the rule-based guess shows first and a
+  type you pick by hand is never overridden.
+- **Placing a note.** When the spoken place isn't in a form the parser reads
+  ("the second canto of Purgatory, around the fourth stanza"), the model
+  reads it and the card shows "read by the model". ⌘K → "Re-read spoken
+  anchors…" also asks the model about notes left on a whole canto.
+- **Ask about these notes.** The box under the filters sends a question with
+  the most relevant of the notes shown, and their lines, to the model; the
+  answer cites notes as [n], and each citation is a button that jumps to the
+  note.
+
+Without the model everything else works as before; the status bar says
+"no model".
+
 ## The Mandelbaum translation
 
 Longfellow ships with the app. Allen Mandelbaum's translation is in

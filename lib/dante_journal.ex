@@ -23,6 +23,7 @@ defmodule DanteJournal do
     }
 
     children = [
+      {Task.Supervisor, name: DanteJournal.Tasks},
       {DanteJournal.Notes, name: DanteJournal.Notes, dir: notes_dir},
       {DanteJournal.Desktop,
        name: DanteJournal.Runtime,
@@ -38,6 +39,7 @@ defmodule DanteJournal do
     with {:ok, supervisor} <- Supervisor.start_link(children, strategy: :rest_for_one) do
       # The store started before the window; now the window can read it.
       GPUI.Runtime.send_view(DanteJournal.Runtime, 1, :refresh_notes)
+      DanteJournal.Model.check_availability({:runtime, DanteJournal.Runtime})
       {:ok, supervisor}
     end
   end

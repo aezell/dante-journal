@@ -313,6 +313,7 @@ defmodule DanteJournal.View do
         {if assigns.offer_spoken, do: small_button("form-anchor-spoken", "Use spoken anchor"), else: []}
         {if assigns.offer_selection, do: small_button("form-anchor-selection", "Use selected tercet"), else: []}
         {if assigns.offer_canto, do: small_button("form-anchor-canto", "Whole canto"), else: []}
+        {if MapSet.size(assigns.f.pending) > 0, do: thinking("form-thinking"), else: []}
         <UI.input id="form-anchor-input" label="Move to" placeholder="Move to… e.g. Purg. 9.70 or canto 9 stanza 24" size="sm"
           value={assigns.f.anchor_input} phx-change="form-anchor-input" phx-submit="form-anchor-apply" class="w-[260px]" />
       </div>
@@ -321,6 +322,7 @@ defmodule DanteJournal.View do
         {Enum.map(Classifier.types(), &type_chip(&1, assigns.f.type))}
       </div>
       {form_text(assigns.f)}
+      {title_and_tags(assigns.f.title, assigns.f.tags, "form")}
       <div class="flex flex-row items-center gap-2">
         <text class="text-[11px]" style={[color: {:theme, :muted}]}>{if assigns.f.ms > 0, do: clock(assigns.f.ms) <> " of audio · ", else: ""}Enter adds a line · ⌘S saves</text>
         <div class="flex-1" />
@@ -355,7 +357,41 @@ defmodule DanteJournal.View do
   defp how_label(:spoken), do: "from what you said"
   defp how_label(:selection), do: "the selected tercet"
   defp how_label(:position), do: "the open canto"
+  defp how_label(:model), do: "read by the model"
   defp how_label(:chosen), do: ""
+
+  defp thinking(id) do
+    assigns = %{id: id}
+
+    ~GPUI"""
+    <text id={assigns.id} class="text-[11px]" style={[color: {:theme, :muted}]}>Thinking…</text>
+    """
+  end
+
+  defp title_and_tags(nil, [], _prefix), do: []
+
+  defp title_and_tags(title, tags, prefix) do
+    assigns = %{
+      title: title,
+      tags: Enum.map_join(tags, "  ", &("#" <> &1)),
+      id: prefix <> "-title"
+    }
+
+    ~GPUI"""
+    <div id={assigns.id} class="flex flex-row items-center gap-3">
+      {if assigns.title, do: titled(assigns.title), else: []}
+      <text class="text-[11px]" style={[color: {:theme, :muted}]}>{assigns.tags}</text>
+    </div>
+    """
+  end
+
+  defp titled(title) do
+    assigns = %{title: title}
+
+    ~GPUI"""
+    <text class="text-[12px] font-semibold">{assigns.title}</text>
+    """
+  end
 
   defp small_button(id, label) do
     assigns = %{id: id, label: label}
@@ -420,7 +456,9 @@ defmodule DanteJournal.View do
           {Enum.map(Classifier.types(), &type_filter_chip(&1, assigns.notes_types))}
           {if assigns.filtered, do: small_button("notes-clear-filters", "Clear"), else: []}
         </div>
+        {if assigns.fm, do: ask_box(assigns), else: []}
       </div>
+      {if assigns.ask.pending || assigns.ask.answer, do: answer_panel(assigns), else: []}
       {notes_list(assigns)}
     </div>
     """
@@ -473,6 +511,56 @@ defmodule DanteJournal.View do
       revision: if(state.pending_delete == note.id, do: 1, else: 0),
       children: [note_card(note, state)]
     })
+  end
+
+  defp ask_box(assigns) do
+    ~GPUI"""
+    <UI.input id="ask-input" label="Ask about these notes" placeholder="Ask the model about the notes shown…  ↵" size="sm"
+      value={assigns.ask.question} focus_request={assigns.ask.focus} phx-change="ask-question" phx-submit="ask" class="w-full" />
+    """
+  end
+
+  defp answer_panel(assigns) do
+    cited = State.cited_notes(assigns)
+    assigns = Map.put(assigns, :cited, Enum.with_index(cited, 1))
+
+    ~GPUI"""
+    <div id="answer-panel" class="relative flex flex-col shrink-0 mx-3 mt-3 px-3 py-2 gap-2 rounded-md" style={[background: {:theme, :canvas}]}>
+      <div class="absolute left-0 top-1 bottom-1 w-[3px] rounded-full" style={[background: {:theme, :accent}]} />
+      <div class="flex flex-row items-center gap-2">
+        <text class="text-[11px] font-semibold" style={[color: {:theme, :accent}]}>{assigns.ask.pending || assigns.ask.question}</text>
+        <div class="flex-1" />
+        {if assigns.ask.pending, do: thinking("ask-thinking"), else: small_button("ask-close", "Close")}
+      </div>
+      {if assigns.ask.answer, do: answer_text(assigns.ask.answer), else: []}
+      <div class="flex flex-row flex-wrap items-center gap-1">
+        {if assigns.cited == [], do: [], else: cited_label()}
+        {Enum.map(assigns.cited, fn {note, n} -> cite_button(n, note) end)}
+      </div>
+    </div>
+    """
+  end
+
+  defp answer_text(text) do
+    assigns = %{text: text}
+
+    ~GPUI"""
+    <text id="answer-text" class="text-[13px] leading-[19px]">{assigns.text}</text>
+    """
+  end
+
+  defp cited_label do
+    ~GPUI"""
+    <text class="text-[10px]" style={[color: {:theme, :muted}]}>From</text>
+    """
+  end
+
+  defp cite_button(n, note) do
+    assigns = %{n: n, id: note.id, label: "[#{n}] #{Anchor.label(note.anchor)}"}
+
+    ~GPUI"""
+    <UI.button id={"cite-" <> Integer.to_string(assigns.n)} label={assigns.label} size="xs" variant="ghost" phx-click={"note-focus:" <> assigns.id} />
+    """
   end
 
   defp scope_chip(scope, current) do
@@ -550,6 +638,7 @@ defmodule DanteJournal.View do
         <div class="flex-1" />
         <text class="text-[10px]" style={[color: {:theme, :muted}]}>{assigns.time}</text>
       </div>
+      {title_and_tags(assigns.note.title, assigns.note.tags, "note-" <> assigns.note.id)}
       <.action id={"focus-" <> assigns.note.id} phx-click={"note-focus:" <> assigns.note.id} accessibility_label="Show these lines" class="cursor-pointer w-full">
         <text class="text-[13px] leading-[19px]">{assigns.body}</text>
       </.action>
@@ -642,7 +731,7 @@ defmodule DanteJournal.View do
       <text id="status" class="text-[11px]" style={[color: {:theme, :muted}]}>{assigns.status}</text>
       {if assigns.notice, do: notice(assigns.notice, "notice"), else: []}
       <div class="flex-1" />
-      <text class="text-[11px]" style={[color: {:theme, :muted}]}>{recorder_label(assigns.recorder_status)}{hotkey_label(assigns)}</text>
+      <text class="text-[11px]" style={[color: {:theme, :muted}]}>{recorder_label(assigns.recorder_status)}{hotkey_label(assigns)}{model_label(assigns.fm_status)}</text>
       <text class="text-[11px]" style={[color: {:theme, :muted}]}>{selection_label(assigns)}</text>
     </div>
     """
@@ -661,6 +750,10 @@ defmodule DanteJournal.View do
 
   defp hotkey_label(%{hotkey_status: :denied}), do: " · hold-to-talk needs Input Monitoring"
   defp hotkey_label(_), do: ""
+
+  defp model_label(:ready), do: " · model ready"
+  defp model_label(:unavailable), do: " · no model"
+  defp model_label(_), do: ""
 
   defp recorder_label(:ready), do: "Mic ready"
   defp recorder_label(:starting), do: "Starting transcription…"
@@ -841,6 +934,14 @@ defmodule DanteJournal.View do
   def handle_event("notes-query", %{value: value}, state),
     do: {:noreply, State.set_query(state, value)}
 
+  def handle_event("ask-question", %{value: value}, state),
+    do: {:noreply, State.set_question(state, value)}
+
+  def handle_event("ask", %{value: value}, state), do: {:noreply, State.ask(state, value)}
+  def handle_event("ask", _event, state), do: {:noreply, State.ask(state, state.ask.question)}
+  def handle_event("ask-close", _event, state), do: {:noreply, State.close_answer(state)}
+  def handle_event("focus-ask", _event, state), do: {:noreply, State.focus_ask(state)}
+
   def handle_event("focus-search", _event, state),
     do: {:noreply, %{state | notes_search_focus: state.notes_search_focus + 1}}
 
@@ -928,6 +1029,9 @@ defmodule DanteJournal.View do
 
   @impl true
   def handle_info(:refresh_notes, state), do: {:noreply, State.refresh_notes(state)}
+  def handle_info({:fm, event}, state), do: {:noreply, State.model_event(state, event)}
+  # Tests point the model at themselves after the runtime exists.
+  def handle_info({:configure, opts}, state), do: {:noreply, Map.merge(state, Map.new(opts))}
 
   def handle_info({:recorder, :ready}, state), do: {:noreply, %{state | recorder_status: :ready}}
 
