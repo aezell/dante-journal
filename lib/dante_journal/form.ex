@@ -164,6 +164,7 @@ defmodule DanteJournal.Form do
     |> String.replace(~r/[ \t]{2,}/, " ")
     |> String.replace(~r/\s+([,.;:?!])/, "\\1")
     |> String.replace(~r/([,.;:?!]),/, "\\1")
+    |> String.trim()
   end
 
   def tidy(text, _source), do: text
