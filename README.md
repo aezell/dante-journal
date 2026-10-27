@@ -5,6 +5,9 @@ bindings. Read the printed book, tap a key, dictate a note; it is transcribed
 on-device and pinned to the canto and tercet it talks about. The plan is in
 [docs/PLAN.md](docs/PLAN.md).
 
+<img width="1283" height="803" alt="CleanShot 2026-10-27 at 12 42 08 PM" src="https://github.com/user-attachments/assets/a9aaf36b-e695-484e-ab8d-1298b0251d7b" />
+
+
 ## Run
 
 Requires Elixir 1.20 on OTP 29 (see `.tool-versions`) and Apple silicon
